@@ -195,7 +195,7 @@ python test_two_humans_one_bot.py
 如有技术问题或建议，请通过以下方式联系:
 
 - 创建Issue: [GitHub Issues](../../issues)
-- 邮件联系: [您的邮箱]
+- 邮件联系: 
 
 ---
 
