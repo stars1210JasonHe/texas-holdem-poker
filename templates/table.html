@@ -1,0 +1,1142 @@
+{% extends "base.html" %}
+
+{% block title %}德州扑克游戏 - 牌桌{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-900 py-4">
+    <div class="max-w-7xl mx-auto px-4">
+        <!-- 牌桌信息栏 -->
+        <div class="bg-gray-800 rounded-xl p-4 mb-4 border border-gray-700">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-xl font-bold text-white" id="tableTitle">牌桌</h1>
+                    <p class="text-gray-300 text-sm">
+                        盲注: <span id="blindInfo">10/20</span> | 
+                        底池: <span id="potAmount">0</span> | 
+                        手牌: <span id="handNumber">0</span>
+                    </p>
+                </div>
+                <div class="flex space-x-2">
+                    <button id="startHandBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm hidden">
+                        开始游戏
+                    </button>
+                    <button id="addBotBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
+                        🤖 添加机器人
+                    </button>
+                    <button id="leaveTableBtn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm">
+                        离开牌桌
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 游戏区域 -->
+        <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+            <!-- 公共牌区域 -->
+            <div class="text-center mb-8">
+                <h3 class="text-lg font-semibold text-white mb-4">公共牌</h3>
+                <div id="communityCards" class="flex justify-center space-x-2 mb-4">
+                    <!-- 公共牌将在这里显示 -->
+                </div>
+                <div class="text-xl font-bold text-yellow-400">
+                    底池: $<span id="potDisplay">0</span>
+                </div>
+            </div>
+
+            <!-- 玩家区域 -->
+            <div id="playersArea" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+                <!-- 玩家信息将在这里显示 -->
+            </div>
+
+            <!-- 您的手牌 -->
+            <div class="bg-gray-700 rounded-lg p-4 mb-4">
+                <h3 class="text-lg font-semibold text-white mb-2">您的手牌</h3>
+                <div id="myCards" class="flex space-x-2">
+                    <!-- 手牌将在这里显示 -->
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div id="actionButtons" class="bg-gray-700 rounded-lg p-4 hidden">
+                <div class="flex flex-wrap gap-2 justify-center">
+                    <button id="foldBtn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded">
+                        弃牌
+                    </button>
+                    <button id="checkBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded hidden">
+                        过牌
+                    </button>
+                    <button id="callBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded hidden">
+                        跟注 $<span id="callAmount">0</span>
+                    </button>
+                    <button id="betBtn" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded">
+                        下注
+                    </button>
+                    <button id="raiseBtn" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded hidden">
+                        加注
+                    </button>
+                    <button id="allinBtn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded">
+                        全下
+                    </button>
+                </div>
+                
+                <!-- 下注输入 -->
+                <div id="betInputArea" class="mt-4 text-center hidden">
+                    <input 
+                        type="number" 
+                        id="betAmount" 
+                        class="bg-gray-600 text-white px-3 py-2 rounded mr-2"
+                        placeholder="输入金额"
+                        min="1"
+                    >
+                    <button id="confirmBetBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">
+                        确认
+                    </button>
+                    <button id="cancelBetBtn" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded">
+                        取消
+                    </button>
+                </div>
+            </div>
+
+            <!-- 下一轮投票区域 -->
+            <div id="nextRoundVote" class="bg-yellow-600 rounded-lg p-4 mt-4 hidden">
+                <h3 class="text-lg font-semibold text-white mb-2">准备开始下一轮？</h3>
+                <div class="mb-3">
+                    <p class="text-white text-sm" id="voteStatus">等待玩家投票...</p>
+                    <div class="text-xs text-yellow-100 mt-1" id="votedPlayers"></div>
+                </div>
+                <button id="voteNextRoundBtn" class="bg-white hover:bg-gray-100 text-yellow-600 px-6 py-2 rounded font-bold transition-colors w-full">
+                    开始下一轮
+                </button>
+            </div>
+
+            <!-- 游戏状态调试 -->
+            <div class="bg-gray-700 rounded-lg p-4 mt-4">
+                <h3 class="text-lg font-semibold text-white mb-2">游戏状态 
+                    <button id="refreshStateBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs ml-2">
+                        刷新
+                    </button>
+                </h3>
+                <div id="gameStateInfo" class="text-sm text-gray-300">
+                    <div class="text-gray-500">点击刷新查看状态</div>
+                </div>
+            </div>
+
+            <!-- 操作记录 -->
+            <div class="bg-gray-700 rounded-lg p-4 mt-4">
+                <h3 class="text-lg font-semibold text-white mb-2">操作记录</h3>
+                <div id="actionLog" class="max-h-40 overflow-y-auto text-sm text-gray-300">
+                    <div class="text-gray-500">暂无操作记录</div>
+                </div>
+            </div>
+
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let tableId = '{{ table_id }}';
+    let currentTableState = null;
+    let myPlayerId = null;
+    let actionLog = [];
+
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('🎯 DOMContentLoaded 事件触发');
+        
+        // 检查玩家登录状态
+        const savedPlayer = localStorage.getItem('poker_player');
+        if (!savedPlayer) {
+            console.log('❌ 没有找到玩家信息，重定向到首页');
+            location.href = '/';
+            return;
+        }
+
+        console.log('✅ 找到玩家信息:', savedPlayer);
+        currentPlayer = JSON.parse(savedPlayer);
+        myPlayerId = currentPlayer.id;
+        updatePlayerInfo();
+
+        // 测试Socket连接
+        console.log('🔌 Socket状态:', socket ? 'socket对象存在' : 'socket对象不存在');
+        console.log('🔌 Socket连接状态:', socket ? socket.connected : 'N/A');
+
+        // 初始化事件监听
+        console.log('📡 初始化事件监听器...');
+        initEventListeners();
+        
+        // 连接到牌桌
+        console.log('🚀 页面初始化，玩家信息:', { myPlayerId, currentPlayer });
+        connectToTable();
+        
+        // 测试玩家显示区域
+        const playersArea = document.getElementById('playersArea');
+        console.log('👥 玩家显示区域:', playersArea ? '存在' : '不存在');
+        if (playersArea) {
+            console.log('👥 玩家显示区域HTML:', playersArea.innerHTML);
+            
+            // 手动测试显示机器人
+            setTimeout(() => {
+                console.log('🧪 手动测试显示机器人...');
+                const testPlayers = [
+                    { id: 'test1', nickname: 'hyq', chips: 1000, is_bot: false, status: 'waiting' },
+                    { id: 'test2', nickname: '🤖 新手1', chips: 1000, is_bot: true, status: 'waiting' },
+                    { id: 'test3', nickname: '🤖 老司机2', chips: 1000, is_bot: true, status: 'waiting' }
+                ];
+                
+                displayPlayers(testPlayers);
+            }, 2000);
+        }
+    });
+
+    function initEventListeners() {
+        // 按钮事件
+        document.getElementById('startHandBtn').addEventListener('click', startHand);
+        document.getElementById('addBotBtn').addEventListener('click', addBot);
+        document.getElementById('leaveTableBtn').addEventListener('click', leaveTable);
+        
+        // 游戏动作按钮
+        document.getElementById('foldBtn').addEventListener('click', () => playerAction('fold'));
+        document.getElementById('checkBtn').addEventListener('click', () => playerAction('check'));
+        document.getElementById('callBtn').addEventListener('click', () => playerAction('call'));
+        document.getElementById('betBtn').addEventListener('click', showBetInput);
+        document.getElementById('raiseBtn').addEventListener('click', showRaiseInput);
+        document.getElementById('allinBtn').addEventListener('click', () => playerAction('all_in'));
+        
+        // 下注相关
+        document.getElementById('confirmBetBtn').addEventListener('click', confirmBet);
+        document.getElementById('cancelBetBtn').addEventListener('click', hideBetInput);
+        
+        // 下一轮投票
+        document.getElementById('voteNextRoundBtn').addEventListener('click', voteNextRound);
+        
+        // 刷新状态按钮
+        document.getElementById('refreshStateBtn').addEventListener('click', refreshGameState);
+
+        // Socket事件监听
+        socket.on('table_joined', handleTableJoined);
+        socket.on('hand_started', handleHandStarted);
+        socket.on('your_cards', handleYourCards);
+        socket.on('action_processed', handleActionProcessed);
+        socket.on('table_updated', handleTableUpdated);
+        socket.on('player_joined', handlePlayerJoined);
+        socket.on('bot_added', handleBotAdded);
+        socket.on('player_left', handlePlayerLeft);
+        socket.on('hand_complete', handleHandComplete);
+        socket.on('hand_ended', handleHandEnded);
+        socket.on('new_hand_started', handleNewHandStarted);
+        socket.on('waiting_for_players', handleWaitingForPlayers);
+        
+        // 调试：监听所有Socket.IO事件
+        const originalEmit = socket.emit;
+        socket.emit = function(event, ...args) {
+            console.log('🔺 发送事件:', event, args);
+            return originalEmit.apply(this, [event, ...args]);
+        };
+        
+        // 监听所有接收到的事件
+        socket.onAny((eventName, ...args) => {
+            console.log('🔻 接收事件:', eventName, args);
+        });
+        
+        // 下一轮投票相关事件
+        socket.on('show_next_round_vote', handleShowNextRoundVote);
+        socket.on('next_round_vote_update', handleNextRoundVoteUpdate);
+        socket.on('new_hand_started', handleNewHandStarted);
+    }
+
+    function connectToTable() {
+        // 检查是否有完整的玩家信息
+        if (!myPlayerId || !currentPlayer || !currentPlayer.nickname) {
+            showNotification('缺少玩家信息，请重新登录', 'error');
+            setTimeout(() => location.href = '/', 2000);
+            return;
+        }
+        
+        console.log('🔗 开始连接到牌桌...', { tableId, myPlayerId, nickname: currentPlayer.nickname });
+        
+        // 监听连接成功事件
+        socket.on('connect', function() {
+            console.log('✅ WebSocket连接成功');
+            registerAndJoinTable();
+        });
+        
+        // 监听连接断开事件
+        socket.on('disconnect', function(reason) {
+            console.log('🔌 WebSocket连接断开:', reason);
+            showNotification('连接断开，正在重连...', 'warning');
+        });
+        
+        // 监听重连事件
+        socket.on('reconnect', function(attemptNumber) {
+            console.log('🔄 WebSocket重连成功，尝试次数:', attemptNumber);
+            showNotification('重连成功！', 'success');
+            registerAndJoinTable();
+        });
+        
+        // 监听重连尝试
+        socket.on('reconnect_attempt', function(attemptNumber) {
+            console.log('🔄 正在尝试重连...', attemptNumber);
+        });
+        
+        // 监听重连失败
+        socket.on('reconnect_failed', function() {
+            console.log('❌ 重连失败');
+            showNotification('连接失败，请刷新页面', 'error');
+        });
+        
+        // 如果已经连接，直接注册
+        if (socket.connected) {
+            console.log('✅ WebSocket已连接，直接注册');
+            registerAndJoinTable();
+        } else {
+            console.log('⏳ Socket未连接，等待连接...');
+        }
+        
+        // 监听错误
+        socket.on('error', function(data) {
+            console.error('❌ 连接错误:', data);
+            showNotification(data.message || '连接错误', 'error');
+        });
+
+        // 监听玩家不存在错误
+        socket.on('player_not_found', function(data) {
+            showNotification(data.message || '玩家不存在', 'error');
+            showNotification('正在重定向到主页...', 'info');
+            setTimeout(() => {
+                location.href = '/';
+            }, 2000);
+        });
+    }
+    
+    function registerAndJoinTable() {
+        console.log('📝 注册玩家会话...');
+        
+        // 先注册玩家会话，发送完整的玩家信息
+        socket.emit('register_player', { 
+            player_id: myPlayerId,
+            nickname: currentPlayer.nickname
+        });
+        
+        // 监听注册结果
+        socket.on('player_registered', function(data) {
+            console.log('📝 玩家注册结果:', data);
+            if (data.success) {
+                console.log('🚪 加入牌桌房间...');
+                // 注册成功后加入牌桌房间
+                socket.emit('join_table', { table_id: tableId });
+                
+                // 添加超时检查，如果3秒内没有收到table_joined事件，就手动请求牌桌状态
+                setTimeout(() => {
+                    if (!currentTableState) {
+                        console.log('⚠️  3秒内未收到table_joined事件，手动请求牌桌状态');
+                        socket.emit('get_table_state', { table_id: tableId });
+                    }
+                }, 3000);
+            } else {
+                showNotification('注册失败，请重新进入', 'error');
+                setTimeout(() => location.href = '/lobby', 2000);
+            }
+        });
+        
+        // 添加超时处理
+        setTimeout(() => {
+            if (!currentTableState) {
+                console.log('⏰ 连接超时，尝试重新加入...');
+                socket.emit('join_table', { table_id: tableId });
+            }
+        }, 3000);
+    }
+
+    function startHand() {
+        socket.emit('start_hand');
+    }
+
+    function addBot() {
+        // 创建一个简单的选择菜单
+        const botLevels = [
+            { value: 'beginner', name: '初级机器人', desc: '随机策略，适合新手练习' },
+            { value: 'intermediate', name: '中级机器人', desc: '蒙特卡洛策略，有一定技巧' },
+            { value: 'advanced', name: '高级机器人', desc: '复杂策略，会诈唬和分析' }
+        ];
+        
+        let optionText = '选择机器人等级：\n\n';
+        botLevels.forEach((bot, index) => {
+            optionText += `${index + 1}. ${bot.name} - ${bot.desc}\n`;
+        });
+        optionText += '\n输入数字 1-3 选择机器人等级：';
+        
+        const choice = prompt(optionText);
+        const choiceNum = parseInt(choice);
+        
+        if (choiceNum >= 1 && choiceNum <= 3) {
+            const selectedLevel = botLevels[choiceNum - 1].value;
+            socket.emit('add_bot', { level: selectedLevel });
+        }
+    }
+
+    function leaveTable() {
+        if (confirm('确定要离开牌桌吗？')) {
+            socket.emit('leave_table');
+            location.href = '/lobby';
+        }
+    }
+
+    function playerAction(action, amount = 0) {
+        console.log('执行玩家动作:', { action, amount, playerId: myPlayerId });
+        socket.emit('player_action', {
+            action: action,
+            amount: amount
+        });
+        hideActionButtons();
+    }
+
+    function showBetInput() {
+        document.getElementById('betInputArea').classList.remove('hidden');
+        document.getElementById('betAmount').focus();
+        document.getElementById('betAmount').placeholder = '输入下注金额';
+    }
+
+    function showRaiseInput() {
+        document.getElementById('betInputArea').classList.remove('hidden');
+        document.getElementById('betAmount').focus();
+        document.getElementById('betAmount').placeholder = '输入加注金额';
+        // 设置最小加注额
+        if (currentTableState) {
+            const myPlayer = currentTableState.players.find(p => p.id === myPlayerId);
+            const minRaise = currentTableState.current_bet + currentTableState.big_blind;
+            document.getElementById('betAmount').min = minRaise;
+            document.getElementById('betAmount').placeholder = `最小加注: $${minRaise}`;
+        }
+    }
+
+    function hideBetInput() {
+        document.getElementById('betInputArea').classList.add('hidden');
+        document.getElementById('betAmount').value = '';
+    }
+
+    function confirmBet() {
+        const amount = parseInt(document.getElementById('betAmount').value);
+        if (amount && amount > 0) {
+            // 判断是下注还是加注
+            if (currentTableState && currentTableState.current_bet > 0) {
+                playerAction('raise', amount);
+            } else {
+                playerAction('bet', amount);
+            }
+            hideBetInput();
+        }
+    }
+
+    function hideActionButtons() {
+        document.getElementById('actionButtons').classList.add('hidden');
+    }
+
+    function showActionButtons(canCheck, callAmount) {
+        const actionButtons = document.getElementById('actionButtons');
+        const checkBtn = document.getElementById('checkBtn');
+        const callBtn = document.getElementById('callBtn');
+        const betBtn = document.getElementById('betBtn');
+        const raiseBtn = document.getElementById('raiseBtn');
+        const allinBtn = document.getElementById('allinBtn');
+        const foldBtn = document.getElementById('foldBtn');
+        const callAmountSpan = document.getElementById('callAmount');
+
+        actionButtons.classList.remove('hidden');
+
+        // 基本操作：弃牌和全下总是可用
+        foldBtn.classList.remove('hidden');
+        allinBtn.classList.remove('hidden');
+
+        if (canCheck) {
+            // 可以过牌时，显示过牌和下注
+            checkBtn.classList.remove('hidden');
+            callBtn.classList.add('hidden');
+            betBtn.classList.remove('hidden');
+            raiseBtn.classList.add('hidden');
+        } else {
+            // 需要跟注时，显示跟注和加注
+            checkBtn.classList.add('hidden');
+            callBtn.classList.remove('hidden');
+            callAmountSpan.textContent = callAmount;
+            betBtn.classList.add('hidden');
+            raiseBtn.classList.remove('hidden');
+        }
+    }
+
+    // Socket事件处理函数
+    function handleTableJoined(data) {
+        console.log('🚪 收到table_joined事件:', data);
+        if (data.success) {
+            currentTableState = data.table;
+            
+            // 调试：检查玩家数据
+            if (currentTableState && currentTableState.players) {
+                console.log('📊 牌桌玩家数据:', currentTableState.players);
+                const botCount = currentTableState.players.filter(p => p.is_bot).length;
+                const humanCount = currentTableState.players.filter(p => !p.is_bot).length;
+                console.log(`🤖 机器人数量: ${botCount}, 👤 人类玩家: ${humanCount}`);
+            }
+            
+            // 同步玩家ID（特别重要在重连时）
+            const synced = syncPlayerIdWithBackend(data.table);
+            
+            updateTableDisplay();
+            
+            if (data.reconnected) {
+                showNotification('🔗 重新连接成功！', 'success');
+                // 重连后立即检查是否轮到我行动
+                setTimeout(() => checkIfMyTurn(), synced ? 600 : 500);
+            } else {
+                showNotification('成功加入牌桌！', 'success');
+                if (synced) {
+                    setTimeout(() => checkIfMyTurn(), 100);
+                } else {
+                    checkIfMyTurn();
+                }
+            }
+        }
+    }
+
+    function handleHandStarted(data) {
+        console.log('游戏开始事件:', data);
+        currentTableState = data.table;
+        
+        // 清空我的手牌显示
+        document.getElementById('myCards').innerHTML = '';
+        
+        // 清空操作记录
+        clearActionLog();
+        addActionLog('系统', 'game_start', 0, `🎮 第${data.table.hand_number}手开始`);
+        
+        // 同步玩家ID
+        const synced = syncPlayerIdWithBackend(data.table);
+        
+        updateTableDisplay();
+        showNotification('🎮 新手牌开始！等待发牌...', 'info');
+        
+        // 隐藏操作按钮，等待手牌
+        hideActionButtons();
+        
+        // 检查是否轮到我行动
+        setTimeout(() => checkIfMyTurn(), synced ? 600 : 500);
+    }
+
+    function handleYourCards(data) {
+        console.log('收到手牌:', data.hole_cards);
+        console.log('手牌详细信息:', JSON.stringify(data.hole_cards, null, 2));
+        displayMyCards(data.hole_cards);
+        showNotification('📋 手牌已发放！', 'success');
+    }
+
+    function handleActionProcessed(data) {
+        currentTableState = data.table;
+        
+        // 记录操作
+        if (data.action && data.player_id) {
+            const player = data.table.players.find(p => p.id === data.player_id);
+            const playerName = player ? player.nickname : '未知玩家';
+            addActionLog(playerName, data.action, data.amount || 0, data.description);
+        }
+        
+        // 同步玩家ID
+        const synced = syncPlayerIdWithBackend(data.table);
+        
+        updateTableDisplay();
+        
+        // 如果轮到我行动，显示操作按钮
+        if (synced) {
+            setTimeout(() => checkIfMyTurn(), 100);
+        } else {
+            checkIfMyTurn();
+        }
+    }
+
+    function handleTableUpdated(data) {
+        currentTableState = data;
+        
+        // 强制同步玩家ID - 检查是否需要更新
+        const synced = syncPlayerIdWithBackend(data);
+        
+        updateTableDisplay();
+        
+        // 如果进行了ID同步，延迟一下再检查轮次，确保同步生效
+        if (synced) {
+            setTimeout(() => checkIfMyTurn(), 100);
+        } else {
+            checkIfMyTurn();
+        }
+    }
+
+    function handlePlayerJoined(data) {
+        currentTableState = data.table;
+        updateTableDisplay();
+        
+        // 如果是机器人加入，显示通知
+        if (data.player && data.player.is_bot) {
+            showNotification(`🤖 机器人 ${data.player.nickname} 已加入牌桌`, 'success');
+            
+            // 如果现在有2个或更多玩家，提示可以开始游戏
+            if (currentTableState.can_start) {
+                showNotification('🎮 现在可以开始游戏了！', 'success');
+            }
+        }
+    }
+
+    function handleBotAdded(data) {
+        if (data.success) {
+            // 更新牌桌状态 - 需要重新获取完整状态
+            if (data.table) {
+                currentTableState = data.table;
+            }
+            updateTableDisplay();
+            showNotification(`🤖 机器人 ${data.bot.nickname} 已加入牌桌`, 'success');
+            
+            // 如果现在可以开始游戏，显示提示
+            if (currentTableState && currentTableState.players && currentTableState.players.length >= 2) {
+                showNotification('🎮 现在可以开始游戏了！点击"开始游戏"按钮', 'info');
+            }
+        } else {
+            showNotification('添加机器人失败', 'error');
+        }
+    }
+
+    function handlePlayerLeft(data) {
+        console.log('玩家离开:', data);
+        showNotification(`👋 ${data.nickname} 离开了牌桌`, 'info');
+        
+        // 重新获取牌桌状态
+        // 这里我们需要触发一个状态更新
+        setTimeout(() => {
+            // 简单的方式：重新加载页面
+            location.reload();
+        }, 1000);
+    }
+
+    function handleHandComplete(data) {
+        console.log('游戏结束:', data);
+        
+        // 显示获胜者信息
+        if (data.winner) {
+            showNotification(`🎉 ${data.winner.nickname} 获胜！赢得 $${data.final_pot}`, 'success', 5000);
+            addActionLog('系统', 'hand_end', data.final_pot, `🎉 ${data.winner.nickname} 获胜，赢得 $${data.final_pot}`);
+        }
+        
+        // 隐藏操作按钮
+        hideActionButtons();
+        
+        // 显示倒计时信息
+        showNotification('⏰ 1秒后自动开始下一局...', 'info', 2000);
+    }
+
+    function handleHandEnded(data) {
+        console.log('🏆 手牌结束:', data);
+        
+        // 更新桌面状态（包含更新后的筹码）
+        if (data.table_state) {
+            console.log('📊 更新游戏状态，包含最新筹码信息');
+            currentTableState = data.table_state;
+            updateTableDisplay();
+        }
+        
+        // 显示获胜者信息
+        if (data.winners && data.winners.length > 0) {
+            const winner = data.winners[0];
+            const pot = currentTableState ? currentTableState.pot : 0;
+            showNotification(`🎉 ${winner.nickname} 获胜！赢得 $${pot}`, 'success', 5000);
+            addActionLog('系统', 'hand_end', pot, `🎉 ${winner.nickname} 获胜，赢得 $${pot}`);
+            
+            // 如果我是获胜者，特别提示筹码增加
+            if (winner.nickname === currentPlayer.nickname) {
+                const myPlayer = currentTableState.players.find(p => p.id === myPlayerId);
+                if (myPlayer) {
+                    showNotification(`💰 恭喜！您现在有 $${myPlayer.chips} 筹码`, 'success', 3000);
+                }
+            }
+        }
+        
+        // 显示消息
+        if (data.message) {
+            showNotification(data.message, 'info', 3000);
+        }
+        
+        // 隐藏操作按钮
+        hideActionButtons();
+        
+        // 清空我的手牌显示
+        document.getElementById('myCards').innerHTML = '';
+    }
+
+    function handleNewHandStarted(data) {
+        console.log('新一局开始:', data);
+        showNotification(`🎮 ${data.message}`, 'success');
+        
+        // 清空我的手牌显示
+        document.getElementById('myCards').innerHTML = '';
+        
+        // 等待更新的游戏状态
+        setTimeout(() => {
+            updateTableDisplay();
+            checkIfMyTurn();
+        }, 500);
+    }
+
+    function handleWaitingForPlayers(data) {
+        console.log('等待玩家:', data);
+        showNotification(`⏳ ${data.message}`, 'warning');
+        hideActionButtons();
+    }
+
+    function updateTableDisplay() {
+        if (!currentTableState) return;
+
+        // 更新基本信息
+        document.getElementById('tableTitle').textContent = currentTableState.title;
+        document.getElementById('blindInfo').textContent = `${currentTableState.small_blind}/${currentTableState.big_blind}`;
+        document.getElementById('potAmount').textContent = currentTableState.pot;
+        document.getElementById('potDisplay').textContent = currentTableState.pot;
+        document.getElementById('handNumber').textContent = currentTableState.hand_number;
+        
+        // 显示当前行动玩家提示
+        let statusText = '';
+        if (currentTableState.current_player_id) {
+            const currentPlayer = currentTableState.players.find(p => p.id === currentTableState.current_player_id);
+            if (currentPlayer) {
+                if (currentPlayer.id === myPlayerId) {
+                    statusText = ' | 🔔 轮到您行动';
+                } else {
+                    statusText = ` | ⏳ 等待 ${currentPlayer.nickname} 行动`;
+                }
+            }
+        }
+        document.getElementById('tableTitle').textContent = currentTableState.title + statusText;
+
+        // 更新公共牌
+        displayCommunityCards(currentTableState.community_cards);
+        
+        // 更新玩家信息
+        displayPlayers(currentTableState.players);
+        
+        // 检查是否可以开始游戏
+        if (currentTableState.can_start) {
+            document.getElementById('startHandBtn').classList.remove('hidden');
+        } else {
+            document.getElementById('startHandBtn').classList.add('hidden');
+            
+            // 如果只有一个玩家，显示提示
+            if (currentTableState.players && currentTableState.players.length === 1) {
+                showNotification('💡 提示：请添加机器人或等待其他玩家加入后开始游戏', 'info');
+            }
+        }
+    }
+
+    function displayCommunityCards(cards) {
+        const container = document.getElementById('communityCards');
+        container.innerHTML = '';
+        
+        for (let i = 0; i < 5; i++) {
+            const cardDiv = document.createElement('div');
+            if (i < cards.length) {
+                cardDiv.appendChild(createCardElement(cards[i]));
+            } else {
+                cardDiv.appendChild(createCardElement(null, true));
+            }
+            container.appendChild(cardDiv);
+        }
+    }
+
+    function displayPlayers(players) {
+        console.log('👥 displayPlayers 被调用，玩家数据:', players);
+        const container = document.getElementById('playersArea');
+        container.innerHTML = '';
+
+        players.forEach(player => {
+            console.log(`处理玩家: ${player.nickname}, is_bot: ${player.is_bot}`);
+            const playerDiv = document.createElement('div');
+            playerDiv.className = 'bg-gray-600 rounded-lg p-3';
+            
+            // 判断是否是我：优先通过ID，其次通过昵称
+            const isMe = (player.id === myPlayerId) || 
+                        (currentPlayer && player.nickname === currentPlayer.nickname);
+            const statusClass = player.status === 'playing' ? 'text-green-400' : 'text-gray-400';
+            
+            playerDiv.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <div>
+                        <div class="font-semibold ${isMe ? 'text-yellow-400' : 'text-white'}">
+                            ${player.is_bot ? '🤖 ' : ''}${player.nickname} ${isMe ? '(你)' : ''}
+                        </div>
+                        <div class="text-sm ${statusClass}">
+                            ${getStatusText(player.status)}${player.is_bot ? ' • 机器人' : ''}
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-white font-semibold">$${player.chips}</div>
+                        ${player.current_bet > 0 ? `<div class="text-yellow-400 text-sm">下注: $${player.current_bet}</div>` : ''}
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(playerDiv);
+        });
+    }
+
+    function displayMyCards(cards) {
+        console.log('displayMyCards 调用，参数:', cards);
+        const container = document.getElementById('myCards');
+        container.innerHTML = '';
+        
+        if (cards && cards.length === 2) {
+            console.log('正在显示2张手牌...');
+            cards.forEach((card, index) => {
+                console.log(`创建第${index + 1}张牌:`, card);
+                const cardElement = createCardElement(card);
+                console.log('创建的牌元素:', cardElement);
+                container.appendChild(cardElement);
+            });
+            console.log('手牌显示完成，容器内容:', container.innerHTML);
+        } else {
+            console.log('手牌数据无效:', { cards, length: cards ? cards.length : 'null' });
+        }
+    }
+
+    function getStatusText(status) {
+        const statusTexts = {
+            'waiting': '等待中',
+            'playing': '游戏中',
+            'folded': '已弃牌',
+            'all_in': '全下'
+        };
+        return statusTexts[status] || status;
+    }
+
+    function syncPlayerIdWithBackend(tableState) {
+        if (!tableState || !tableState.players || !currentPlayer) {
+            console.log('⚠️ syncPlayerIdWithBackend: 缺少必要数据', { tableState: !!tableState, players: !!tableState?.players, currentPlayer: !!currentPlayer });
+            return;
+        }
+        
+        console.log('🔍 检查玩家ID同步:', {
+            myPlayerId: myPlayerId,
+            nickname: currentPlayer.nickname,
+                            allPlayers: tableState.players.map(p => ({ id: p.id, nickname: p.nickname, is_bot: p.is_bot }))
+        });
+        
+        // 先通过昵称找到正确的玩家（因为昵称是可信的）
+        const foundByNickname = tableState.players.find(p => 
+            p.nickname === currentPlayer.nickname && !p.is_bot
+        );
+        
+        if (foundByNickname) {
+            // 检查ID是否匹配
+            if (foundByNickname.id !== myPlayerId) {
+                console.log('🔄 ID不匹配，正在同步:', {
+                    旧ID: myPlayerId,
+                    新ID: foundByNickname.id,
+                    昵称: currentPlayer.nickname
+                });
+                
+                // 更新前端的玩家ID
+                myPlayerId = foundByNickname.id;
+                
+                // 更新localStorage
+                localStorage.setItem('player_id', myPlayerId);
+                currentPlayer.id = myPlayerId;
+                localStorage.setItem('poker_player', JSON.stringify(currentPlayer));
+                
+                // 重新注册会话
+                socket.emit('register_player', { player_id: myPlayerId });
+                
+                console.log('✅ 玩家ID已同步:', myPlayerId);
+                return true; // 表示进行了同步
+            } else {
+                console.log('✅ 玩家ID匹配正确');
+                return false; // 表示无需同步
+            }
+        } else {
+            console.log('❌ 无法通过昵称找到匹配的玩家:', currentPlayer.nickname);
+            console.log('所有非机器人玩家:', tableState.players.filter(p => !p.is_bot).map(p => p.nickname));
+            return false;
+        }
+    }
+
+    function checkIfMyTurn() {
+        // 根据游戏状态判断是否显示操作按钮
+        console.log('=== 检查我的轮次 ===');
+        console.log('当前游戏状态:', currentTableState ? currentTableState.game_stage : '无状态');
+        console.log('我的玩家ID:', myPlayerId);
+        console.log('我的昵称:', currentPlayer ? currentPlayer.nickname : '无昵称');
+        
+        if (currentTableState && currentTableState.game_stage !== 'waiting') {
+            // 强制通过昵称找到正确的玩家（确保使用最新的ID）
+            let myPlayer = null;
+            if (currentPlayer && currentPlayer.nickname) {
+                myPlayer = currentTableState.players.find(p => 
+                    p.nickname === currentPlayer.nickname && !p.is_bot
+                );
+                
+                if (myPlayer && myPlayer.id !== myPlayerId) {
+                    console.log('⚠️ 在checkIfMyTurn中发现ID不匹配，立即更新');
+                    console.log('旧ID:', myPlayerId, '新ID:', myPlayer.id);
+                    myPlayerId = myPlayer.id;  // 更新全局变量
+                    // 同时更新localStorage
+                    localStorage.setItem('player_id', myPlayerId);
+                    const updatedPlayer = { ...currentPlayer, id: myPlayer.id };
+                    localStorage.setItem('poker_player', JSON.stringify(updatedPlayer));
+                    currentPlayer = updatedPlayer;
+                }
+            }
+            
+            // 如果通过昵称没找到，再尝试通过ID找
+            if (!myPlayer) {
+                myPlayer = currentTableState.players.find(p => p.id === myPlayerId);
+            }
+            
+            console.log('找到我的玩家信息:', myPlayer);
+            console.log('当前应该行动的玩家ID:', currentTableState.current_player_id);
+            console.log('我的最新玩家ID:', myPlayerId);
+            console.log('所有玩家ID映射:', currentTableState.players.map(p => ({ id: p.id, name: p.nickname })));
+            
+            // 只有当轮到我行动时才显示按钮
+            console.log('🔍 详细检查轮次条件:', {
+                myPlayer: myPlayer,
+                myPlayerStatus: myPlayer ? myPlayer.status : 'null',
+                currentPlayerId: currentTableState.current_player_id,
+                myPlayerId: myPlayer ? myPlayer.id : 'null',
+                statusMatch: myPlayer ? myPlayer.status === 'playing' : false,
+                idMatch: myPlayer ? currentTableState.current_player_id === myPlayer.id : false
+            });
+            
+            if (myPlayer && myPlayer.status === 'playing' && currentTableState.current_player_id === myPlayer.id) {
+                const canCheck = currentTableState.current_bet === (myPlayer.current_bet || 0);
+                const callAmount = currentTableState.current_bet - (myPlayer.current_bet || 0);
+                console.log('🎮 轮到我行动:', { canCheck, callAmount, currentBet: currentTableState.current_bet, myBet: myPlayer.current_bet });
+                showActionButtons(canCheck, callAmount);
+            } else {
+                console.log('❌ 不是我的轮次:', { 
+                    isMyTurn: currentTableState.current_player_id === (myPlayer ? myPlayer.id : myPlayerId),
+                    currentPlayerId: currentTableState.current_player_id,
+                    myPlayerId: myPlayer ? myPlayer.id : myPlayerId,
+                    myStatus: myPlayer ? myPlayer.status : '找不到玩家'
+                });
+                hideActionButtons();
+            }
+        } else {
+            console.log('❌ 游戏未开始或在等待状态');
+            hideActionButtons();
+        }
+        console.log('=== 检查完毕 ===');
+    }
+
+    function createCardElement(card, isBack = false) {
+        console.log('createCardElement 调用，参数:', { card, isBack });
+        const cardDiv = document.createElement('div');
+        cardDiv.className = 'w-16 h-24 rounded-lg border-2 flex items-center justify-center text-lg font-bold';
+        
+        if (isBack || !card) {
+            // 牌背面
+            cardDiv.className += ' bg-blue-600 border-blue-400 text-white';
+            cardDiv.textContent = '🂠';
+            console.log('创建牌背面');
+        } else {
+            // 牌正面 - 处理 card.to_dict() 格式
+            const suit = card.suit;
+            const rank = card.rank;
+            console.log('牌正面数据:', { suit, rank });
+            
+            const isRed = suit === '♥' || suit === '♦';
+            cardDiv.className += ` bg-white border-gray-300 ${isRed ? 'text-red-500' : 'text-black'}`;
+            cardDiv.innerHTML = `
+                <div class="text-center">
+                    <div class="text-sm">${rank}</div>
+                    <div class="text-lg">${suit}</div>
+                </div>
+            `;
+            console.log('创建牌正面:', { rank, suit, isRed });
+        }
+        
+        return cardDiv;
+    }
+
+    // 操作记录相关函数
+    function addActionLog(playerName, action, amount, description) {
+        const timestamp = new Date().toLocaleTimeString();
+        const actionText = getActionText(action, amount, description);
+        
+        const logEntry = {
+            timestamp,
+            playerName,
+            action,
+            amount,
+            text: actionText
+        };
+        
+        actionLog.push(logEntry);
+        
+        // 限制记录数量，最多保留50条
+        if (actionLog.length > 50) {
+            actionLog.shift();
+        }
+        
+        updateActionLogDisplay();
+    }
+
+    function getActionText(action, amount, description) {
+        if (description) {
+            return description;
+        }
+        
+        const actionTexts = {
+            'fold': '弃牌',
+            'check': '过牌',
+            'call': `跟注 $${amount}`,
+            'bet': `下注 $${amount}`,
+            'raise': `加注到 $${amount}`,
+            'all_in': '全下'
+        };
+        
+        return actionTexts[action] || action;
+    }
+
+    function updateActionLogDisplay() {
+        const logContainer = document.getElementById('actionLog');
+        
+        if (actionLog.length === 0) {
+            logContainer.innerHTML = '<div class="text-gray-500">暂无操作记录</div>';
+            return;
+        }
+        
+        // 显示最近的记录（倒序）
+        const recentLogs = actionLog.slice(-20).reverse();
+        
+        logContainer.innerHTML = recentLogs.map(log => `
+            <div class="mb-1 border-b border-gray-600 pb-1">
+                <span class="text-gray-400 text-xs">${log.timestamp}</span>
+                <span class="text-white font-medium">${log.playerName}</span>
+                <span class="text-gray-300">${log.text}</span>
+            </div>
+        `).join('');
+        
+        // 自动滚动到顶部（最新记录）
+        logContainer.scrollTop = 0;
+    }
+
+    function clearActionLog() {
+        actionLog = [];
+        updateActionLogDisplay();
+    }
+
+    // 下一轮投票相关函数
+    function voteNextRound() {
+        console.log('投票开始下一轮');
+        socket.emit('vote_next_round', { table_id: tableId });
+        
+        // 禁用按钮防止重复点击
+        const btn = document.getElementById('voteNextRoundBtn');
+        btn.disabled = true;
+        btn.textContent = '已投票';
+        btn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
+        btn.classList.add('bg-gray-600');
+    }
+
+    function handleShowNextRoundVote(data) {
+        console.log('显示下一轮投票:', data);
+        
+        // 隐藏操作按钮
+        hideActionButtons();
+        
+        // 显示投票区域
+        const voteArea = document.getElementById('nextRoundVote');
+        voteArea.classList.remove('hidden');
+        
+        // 重置投票按钮
+        const btn = document.getElementById('voteNextRoundBtn');
+        btn.disabled = false;
+        btn.textContent = '开始下一轮';
+        btn.classList.remove('bg-gray-600');
+        btn.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
+        
+        // 更新状态
+        document.getElementById('voteStatus').textContent = data.message || '等待玩家投票...';
+    }
+
+    function handleNextRoundVoteUpdate(data) {
+        console.log('投票状态更新:', data);
+        
+        const voteStatus = document.getElementById('voteStatus');
+        const votedPlayers = document.getElementById('votedPlayers');
+        
+        voteStatus.textContent = `投票进度: ${data.votes}/${data.required}`;
+        votedPlayers.textContent = `已投票: ${data.players_voted.join(', ')}`;
+    }
+
+    function handleNewHandStarted(data) {
+        console.log('新手牌开始:', data);
+        
+        // 隐藏投票区域
+        const voteArea = document.getElementById('nextRoundVote');
+        voteArea.classList.add('hidden');
+        
+        // 更新游戏状态
+        currentTableState = data;
+        updateTableDisplay();
+        
+        // 清理操作记录（新手牌开始）
+        clearActionLog();
+        addActionLog('系统', 'new_hand', 0, '新手牌开始');
+        
+        showNotification('新手牌开始！', 'success');
+        
+        // 检查是否轮到我行动
+        setTimeout(() => checkIfMyTurn(), 500);
+    }
+    
+
+    
+    function refreshGameState() {
+        console.log('🔄 刷新游戏状态...');
+        
+        const stateInfo = document.getElementById('gameStateInfo');
+        
+        if (!currentTableState) {
+            stateInfo.innerHTML = '<div class="text-red-400">❌ 无游戏状态</div>';
+            return;
+        }
+        
+        const myPlayer = currentTableState.players ? currentTableState.players.find(p => 
+            p.nickname === currentPlayer.nickname && !p.is_bot
+        ) : null;
+        
+        const stateHTML = `
+            <div class="space-y-1">
+                <div><strong>游戏阶段:</strong> <span class="text-yellow-400">${currentTableState.game_stage || 'unknown'}</span></div>
+                <div><strong>当前玩家:</strong> <span class="text-green-400">${currentTableState.current_player_id || 'none'}</span></div>
+                <div><strong>我的ID:</strong> <span class="text-blue-400">${myPlayerId || 'none'}</span></div>
+                <div><strong>我的昵称:</strong> <span class="text-blue-400">${currentPlayer ? currentPlayer.nickname : 'none'}</span></div>
+                <div><strong>找到我的玩家:</strong> <span class="text-${myPlayer ? 'green' : 'red'}-400">${myPlayer ? '✅' : '❌'}</span></div>
+                ${myPlayer ? `
+                    <div><strong>我的状态:</strong> <span class="text-purple-400">${myPlayer.status}</span></div>
+                    <div><strong>我的筹码:</strong> <span class="text-green-400">$${myPlayer.chips}</span></div>
+                    <div><strong>我的当前下注:</strong> <span class="text-yellow-400">$${myPlayer.current_bet || 0}</span></div>
+                ` : ''}
+                <div><strong>当前下注:</strong> <span class="text-orange-400">$${currentTableState.current_bet || 0}</span></div>
+                <div><strong>底池:</strong> <span class="text-green-400">$${currentTableState.pot || 0}</span></div>
+                <div><strong>轮到我行动:</strong> <span class="text-${myPlayer && currentTableState.current_player_id === myPlayer.id ? 'green' : 'red'}-400">
+                    ${myPlayer && currentTableState.current_player_id === myPlayer.id ? '✅ 是' : '❌ 否'}
+                </span></div>
+                <div><strong>可以开始游戏:</strong> <span class="text-${currentTableState.can_start ? 'green' : 'red'}-400">
+                    ${currentTableState.can_start ? '✅ 是' : '❌ 否'}
+                </span></div>
+            </div>
+        `;
+        
+        stateInfo.innerHTML = stateHTML;
+        
+        // 同时调用检查轮次
+        checkIfMyTurn();
+    }
+    
+
+</script>
+{% endblock %} 

@@ -1,0 +1,661 @@
+{% extends "base.html" %}
+
+{% block title %}德州扑克游戏 - 大厅{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-900 py-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <!-- 大厅标题和状态 -->
+        <div class="bg-gray-800 rounded-xl p-6 mb-8 border border-gray-700">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h1 class="text-3xl font-bold text-white">🎰 游戏大厅</h1>
+                    <p class="text-gray-300 mt-2">选择一个房间开始游戏，或创建新房间</p>
+                </div>
+                <div class="text-right">
+                    <div class="text-2xl font-bold text-blue-400" id="onlineCount">0</div>
+                    <div class="text-sm text-gray-400">在线玩家</div>
+                </div>
+            </div>
+            
+            <!-- 快速操作按钮 -->
+            <div class="flex space-x-4">
+                <button 
+                    id="createTableBtn"
+                    class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-lg transition duration-200 transform hover:scale-105"
+                >
+                    🆕 创建房间
+                </button>
+                <button 
+                    id="refreshBtn"
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition duration-200"
+                >
+                    🔄 刷新列表
+                </button>
+            </div>
+        </div>
+
+        <!-- 房间列表 -->
+        <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-semibold text-white">📋 房间列表</h2>
+                <div class="text-sm text-gray-400" id="tableCount">0 个房间</div>
+            </div>
+
+            <!-- 房间列表容器 -->
+            <div id="tableList" class="space-y-4">
+                <!-- 空状态 -->
+                <div id="emptyState" class="text-center py-12">
+                    <div class="text-6xl mb-4">🃏</div>
+                    <h3 class="text-xl font-semibold text-white mb-2">暂无房间</h3>
+                    <p class="text-gray-400 mb-6">成为第一个创建房间的玩家吧！</p>
+                    <button 
+                        class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-lg transition duration-200 transform hover:scale-105"
+                        onclick="openCreateTableModal()"
+                    >
+                        创建第一个房间
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 创建房间模态框 -->
+<div id="createTableModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
+    <div class="bg-gray-800 rounded-xl p-8 max-w-md w-full mx-4 border border-gray-700">
+        <div class="flex justify-between items-center mb-6">
+            <h3 class="text-xl font-semibold text-white">🆕 创建新房间</h3>
+            <button id="closeModalBtn" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+        </div>
+
+        <form id="createTableForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-2">房间名称</label>
+                <input 
+                    type="text" 
+                    id="tableTitle" 
+                    name="title"
+                    maxlength="30"
+                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-white"
+                    placeholder="输入房间名称"
+                    required
+                >
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">小盲注</label>
+                    <input 
+                        type="number" 
+                        id="smallBlind" 
+                        name="smallBlind"
+                        min="1"
+                        max="1000"
+                        value="10"
+                        class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-white"
+                        required
+                    >
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">大盲注</label>
+                    <input 
+                        type="number" 
+                        id="bigBlind" 
+                        name="bigBlind"
+                        min="2"
+                        max="2000"
+                        value="20"
+                        class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-white"
+                        required
+                    >
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">初始筹码</label>
+                    <select 
+                        id="initialChips" 
+                        name="initialChips"
+                        class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-white"
+                        required
+                    >
+                        <option value="500">💰 500</option>
+                        <option value="1000" selected>💰 1,000</option>
+                        <option value="2000">💰 2,000</option>
+                        <option value="5000">💰 5,000</option>
+                        <option value="10000">💰 10,000</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">最大玩家数</label>
+                    <select 
+                        id="maxPlayers" 
+                        name="maxPlayers"
+                        class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-white"
+                        required
+                    >
+                        <option value="2">👥 2人桌</option>
+                        <option value="4">👥 4人桌</option>
+                        <option value="6" selected>👥 6人桌</option>
+                        <option value="9">👥 9人桌</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-3">🤖 添加机器人</label>
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between bg-gray-700 rounded-lg p-3">
+                        <div>
+                            <span class="text-white font-medium">初级机器人</span>
+                            <div class="text-xs text-gray-400">随机策略，适合新手练习</div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button type="button" class="bot-decrease bg-gray-600 hover:bg-gray-500 text-white w-8 h-8 rounded-full" data-level="beginner">-</button>
+                            <span class="bot-count text-white font-mono w-8 text-center" data-level="beginner">0</span>
+                            <button type="button" class="bot-increase bg-blue-600 hover:bg-blue-500 text-white w-8 h-8 rounded-full" data-level="beginner">+</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between bg-gray-700 rounded-lg p-3">
+                        <div>
+                            <span class="text-white font-medium">中级机器人</span>
+                            <div class="text-xs text-gray-400">蒙特卡洛策略，有一定技巧</div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button type="button" class="bot-decrease bg-gray-600 hover:bg-gray-500 text-white w-8 h-8 rounded-full" data-level="intermediate">-</button>
+                            <span class="bot-count text-white font-mono w-8 text-center" data-level="intermediate">0</span>
+                            <button type="button" class="bot-increase bg-blue-600 hover:bg-blue-500 text-white w-8 h-8 rounded-full" data-level="intermediate">+</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between bg-gray-700 rounded-lg p-3">
+                        <div>
+                            <span class="text-white font-medium">高级机器人</span>
+                            <div class="text-xs text-gray-400">复杂策略，会诈唬和分析</div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button type="button" class="bot-decrease bg-gray-600 hover:bg-gray-500 text-white w-8 h-8 rounded-full" data-level="advanced">-</button>
+                            <span class="bot-count text-white font-mono w-8 text-center" data-level="advanced">0</span>
+                            <button type="button" class="bot-increase bg-blue-600 hover:bg-blue-500 text-white w-8 h-8 rounded-full" data-level="advanced">+</button>
+                        </div>
+                    </div>
+                </div>
+                <input type="hidden" id="botConfig" name="botConfig" value="{}">
+            </div>
+
+            <div class="flex space-x-4 pt-4">
+                <button 
+                    type="button" 
+                    id="cancelCreateBtn"
+                    class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200"
+                >
+                    取消
+                </button>
+                <button 
+                    type="submit"
+                    class="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200"
+                >
+                    创建房间
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 页面加载完成后的初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        // 检查玩家登录状态
+        const savedPlayer = localStorage.getItem('poker_player');
+        if (!savedPlayer) {
+            location.href = '/';
+            return;
+        }
+
+        currentPlayer = JSON.parse(savedPlayer);
+        updatePlayerInfo();
+
+        // 初始化事件监听
+        initEventListeners();
+        
+        // 初始化Socket连接
+        initSocketConnection();
+    });
+
+    // 初始化Socket连接
+    function initSocketConnection() {
+        // 注册玩家会话
+        socket.emit('register_player', {
+            player_id: currentPlayer.id,
+            nickname: currentPlayer.nickname
+        });
+
+        // 监听注册结果
+        socket.on('player_registered', function(data) {
+            if (data.success) {
+                console.log('玩家会话注册成功:', data.player);
+                // 更新本地玩家信息
+                currentPlayer = data.player;
+                localStorage.setItem('poker_player', JSON.stringify(currentPlayer));
+                updatePlayerInfo();
+                
+                // 加载房间列表
+                loadTableList();
+            }
+        });
+
+        // 监听错误
+        socket.on('error', function(data) {
+            showNotification(data.message || '连接错误', 'error');
+            if (data.message && data.message.includes('重新登录')) {
+                // 清除本地存储，重定向到主页
+                localStorage.removeItem('poker_player');
+                setTimeout(() => {
+                    location.href = '/';
+                }, 2000);
+            }
+        });
+
+        // 监听房间创建结果
+        socket.on('room_created', function(data) {
+            if (data.success) {
+                closeCreateTableModal();
+                showNotification(data.message || '房间创建成功！', 'success');
+                // 跳转到房间
+                location.href = `/table/${data.table_id}`;
+            } else {
+                showNotification(data.message || '创建房间失败', 'error');
+            }
+        });
+    }
+
+    // 初始化事件监听器
+    function initEventListeners() {
+        // 创建房间按钮
+        document.getElementById('createTableBtn').addEventListener('click', openCreateTableModal);
+        
+        // 模态框相关
+        document.getElementById('closeModalBtn').addEventListener('click', closeCreateTableModal);
+        document.getElementById('cancelCreateBtn').addEventListener('click', closeCreateTableModal);
+        document.getElementById('createTableForm').addEventListener('submit', handleCreateTable);
+
+        // 点击模态框外部关闭
+        document.getElementById('createTableModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeCreateTableModal();
+            }
+        });
+
+        // 机器人数量控制
+        document.querySelectorAll('.bot-increase').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const level = this.getAttribute('data-level');
+                const countSpan = document.querySelector(`.bot-count[data-level="${level}"]`);
+                const currentCount = parseInt(countSpan.textContent);
+                const maxPlayers = parseInt(document.getElementById('maxPlayers').value);
+                
+                // 计算当前总机器人数
+                const totalBots = getTotalBots();
+                
+                if (totalBots < maxPlayers - 1) { // 至少留一个位置给玩家
+                    countSpan.textContent = currentCount + 1;
+                    updateBotConfig();
+                }
+            });
+        });
+
+        document.querySelectorAll('.bot-decrease').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const level = this.getAttribute('data-level');
+                const countSpan = document.querySelector(`.bot-count[data-level="${level}"]`);
+                const currentCount = parseInt(countSpan.textContent);
+                
+                if (currentCount > 0) {
+                    countSpan.textContent = currentCount - 1;
+                    updateBotConfig();
+                }
+            });
+        });
+
+        // 最大玩家数改变时，重新验证机器人数量
+        document.getElementById('maxPlayers').addEventListener('change', function() {
+            const maxPlayers = parseInt(this.value);
+            const totalBots = getTotalBots();
+            
+            if (totalBots >= maxPlayers) {
+                // 减少机器人数量
+                adjustBotsToLimit(maxPlayers - 1);
+            }
+        });
+    }
+
+    // 获取总机器人数
+    function getTotalBots() {
+        let total = 0;
+        document.querySelectorAll('.bot-count').forEach(span => {
+            total += parseInt(span.textContent);
+        });
+        return total;
+    }
+
+    // 调整机器人数量到限制
+    function adjustBotsToLimit(maxBots) {
+        const levels = ['advanced', 'intermediate', 'beginner'];
+        let currentTotal = getTotalBots();
+        
+        for (const level of levels) {
+            if (currentTotal <= maxBots) break;
+            
+            const countSpan = document.querySelector(`.bot-count[data-level="${level}"]`);
+            const currentCount = parseInt(countSpan.textContent);
+            const reduce = Math.min(currentCount, currentTotal - maxBots);
+            
+            countSpan.textContent = currentCount - reduce;
+            currentTotal -= reduce;
+        }
+        
+        updateBotConfig();
+    }
+
+    // 更新机器人配置
+    function updateBotConfig() {
+        const config = {};
+        document.querySelectorAll('.bot-count').forEach(span => {
+            const level = span.getAttribute('data-level');
+            const count = parseInt(span.textContent);
+            if (count > 0) {
+                config[level] = count;
+            }
+        });
+        document.getElementById('botConfig').value = JSON.stringify(config);
+    }
+
+    // 打开创建房间模态框
+    function openCreateTableModal() {
+        document.getElementById('createTableModal').classList.remove('hidden');
+        document.getElementById('tableTitle').focus();
+    }
+
+    // 关闭创建房间模态框
+    function closeCreateTableModal() {
+        document.getElementById('createTableModal').classList.add('hidden');
+        document.getElementById('createTableForm').reset();
+    }
+
+    // 处理创建房间
+    function handleCreateTable(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(e.target);
+        const botConfig = JSON.parse(formData.get('botConfig') || '{}');
+        
+        const tableData = {
+            title: formData.get('title').trim() || '新房间',
+            small_blind: parseInt(formData.get('smallBlind')),
+            big_blind: parseInt(formData.get('bigBlind')),
+            max_players: parseInt(formData.get('maxPlayers')),
+            initial_chips: parseInt(formData.get('initialChips')),
+            bots: botConfig
+        };
+
+        // 验证数据
+        if (tableData.small_blind >= tableData.big_blind) {
+            showNotification('大盲注必须大于小盲注', 'warning');
+            return;
+        }
+
+        // 验证机器人数量
+        const totalBots = Object.values(botConfig).reduce((sum, count) => sum + count, 0);
+        if (totalBots >= tableData.max_players) {
+            showNotification('机器人数量不能超过最大玩家数减1', 'warning');
+            return;
+        }
+
+        // 发送创建请求
+        socket.emit('create_table', tableData);
+        
+        // 显示创建中状态
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.textContent;
+        submitBtn.textContent = '创建中...';
+        submitBtn.disabled = true;
+    }
+
+    // 加载房间列表和统计信息
+    async function loadTableList() {
+        try {
+            // 同时获取房间列表和统计信息
+            const [tablesResponse, statsResponse] = await Promise.all([
+                fetch('/api/tables'),
+                fetch('/api/stats')
+            ]);
+            
+            const tablesData = await tablesResponse.json();
+            const statsData = await statsResponse.json();
+            
+            if (tablesData.success) {
+                displayTables(tablesData.tables);
+            } else {
+                showNotification('加载房间列表失败', 'error');
+            }
+            
+            // 更新统计信息
+            if (statsData.success) {
+                updateStats(statsData.stats);
+            }
+            
+        } catch (error) {
+            console.error('Error loading tables:', error);
+            showNotification('网络错误', 'error');
+        }
+    }
+    
+    // 更新统计信息显示
+    function updateStats(stats) {
+        const onlineCount = document.getElementById('onlineCount');
+        if (onlineCount) {
+            onlineCount.textContent = stats.online_players || 1;
+        }
+    }
+
+    // 显示房间列表
+    function displayTables(tables) {
+        const tableList = document.getElementById('tableList');
+        const tableCount = document.getElementById('tableCount');
+        const onlineCount = document.getElementById('onlineCount');
+        
+        // 更新房间数量
+        if (tableCount) {
+            tableCount.textContent = `${tables ? tables.length : 0} 个房间`;
+        }
+        
+        // 更新在线玩家数将由updateStats函数处理，这里不再重复计算
+        
+        if (!tables || tables.length === 0) {
+            tableList.innerHTML = `
+                <div class="text-center py-8 text-gray-400">
+                    <div class="text-4xl mb-4">🃏</div>
+                    <p class="text-lg">暂无活跃房间</p>
+                    <p class="text-sm mt-2">创建一个新房间开始游戏吧！</p>
+                </div>
+            `;
+            return;
+        }
+
+        tableList.innerHTML = tables.map(table => `
+            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700 hover:border-blue-500 transition-colors">
+                <div class="flex justify-between items-start mb-3">
+                    <div>
+                        <h3 class="text-lg font-semibold text-white">${escapeHtml(table.title)}</h3>
+                        <p class="text-sm text-gray-400">创建者: ${escapeHtml(table.created_by)}</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="inline-block px-2 py-1 text-xs rounded-full ${getStageColor(table.game_stage)}">
+                            ${getStageText(table.game_stage)}
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 text-sm text-gray-300 mb-4">
+                    <div>
+                        <span class="text-gray-500">盲注:</span>
+                        <span class="text-white">$${table.small_blind}/$${table.big_blind}</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-500">玩家:</span>
+                        <span class="text-white">${table.current_players}/${table.max_players}</span>
+                    </div>
+                </div>
+                
+                <button 
+                    onclick="joinTable('${table.id}')"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg transition-colors ${table.current_players >= table.max_players ? 'opacity-50 cursor-not-allowed' : ''}"
+                    ${table.current_players >= table.max_players ? 'disabled' : ''}
+                >
+                    ${table.current_players >= table.max_players ? '房间已满' : '加入房间'}
+                </button>
+            </div>
+        `).join('');
+    }
+
+    // 获取游戏阶段颜色
+    function getStageColor(stage) {
+        const colors = {
+            'waiting': 'bg-gray-600 text-gray-200',
+            'pre_flop': 'bg-blue-600 text-white',
+            'flop': 'bg-green-600 text-white',
+            'turn': 'bg-yellow-600 text-white',
+            'river': 'bg-red-600 text-white',
+            'showdown': 'bg-purple-600 text-white'
+        };
+        return colors[stage] || 'bg-gray-600 text-gray-200';
+    }
+
+    // 获取游戏阶段文本
+    function getStageText(stage) {
+        const texts = {
+            'waiting': '等待中',
+            'pre_flop': '翻牌前',
+            'flop': '翻牌',
+            'turn': '转牌',
+            'river': '河牌',
+            'showdown': '摊牌'
+        };
+        return texts[stage] || '未知';
+    }
+
+    // HTML转义
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // 加入房间
+    function joinTable(tableId) {
+        socket.emit('join_table', { table_id: tableId });
+        
+        // 监听加入结果
+        socket.once('table_joined', function(data) {
+            if (data.success) {
+                showNotification('成功加入房间！', 'success');
+                location.href = `/table/${tableId}`;
+            }
+        });
+        
+        socket.once('error', function(data) {
+            showNotification(data.message || '加入房间失败', 'error');
+        });
+    }
+
+    // 初始化页面时设置Socket.IO事件监听器
+    function initLobbySocketEvents() {
+        if (!socket) {
+            setTimeout(initLobbySocketEvents, 100);
+            return;
+        }
+
+        // 房间创建成功事件
+        socket.on('room_created', function(data) {
+            console.log('房间创建结果:', data);
+            if (data.success) {
+                showNotification('房间创建成功！', 'success');
+                closeCreateTableModal();
+                // 重新加载房间列表
+                loadTableList();
+            } else {
+                showNotification(data.message || '创建房间失败', 'error');
+                resetCreateButton();
+            }
+        });
+
+        // 加入房间成功事件
+        socket.on('table_joined', function(data) {
+            console.log('加入房间结果:', data);
+            if (data.success && data.table_id) {
+                showNotification('成功加入房间！', 'success');
+                setTimeout(() => {
+                    location.href = `/table/${data.table_id}`;
+                }, 500);
+            }
+        });
+
+        // 大厅更新事件（新房间创建等）
+        socket.on('lobby_update', function(data) {
+            console.log('大厅更新:', data);
+            if (data.type === 'new_table') {
+                showNotification(`新房间 "${data.table.title}" 已创建！`, 'info');
+                // 重新加载房间列表
+                loadTableList();
+            }
+        });
+
+        // 统计信息更新事件
+        socket.on('stats_update', function(data) {
+            console.log('统计更新:', data);
+            updateStats(data);
+        });
+
+        // 通用错误处理
+        socket.on('error', function(data) {
+            console.log('Socket错误:', data);
+            showNotification(data.message || '操作失败', 'error');
+            resetCreateButton();
+        });
+    }
+
+    // 重置创建按钮状态
+    function resetCreateButton() {
+        const submitBtn = document.querySelector('#createTableForm button[type="submit"]');
+        if (submitBtn && submitBtn.disabled) {
+            submitBtn.textContent = '创建房间';
+            submitBtn.disabled = false;
+        }
+    }
+
+    // 页面加载完成时初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        initLobbySocketEvents();
+        
+        // 立即加载统计信息和房间列表
+        loadTableList();
+        
+        // 每30秒自动刷新统计信息
+        setInterval(function() {
+            fetch('/api/stats')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateStats(data.stats);
+                    }
+                })
+                .catch(error => {
+                    console.log('自动更新统计信息失败:', error);
+                });
+        }, 30000);
+    });
+</script>
+{% endblock %} 

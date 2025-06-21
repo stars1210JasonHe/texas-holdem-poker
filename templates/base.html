@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}德州扑克游戏{% endblock %}</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Socket.IO -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    
+    <!-- 自定义样式 -->
+    <style>
+        .card-suit-red { color: #dc2626; }
+        .card-suit-black { color: #1f2937; }
+        .poker-card {
+            width: 60px;
+            height: 84px;
+            border-radius: 8px;
+            border: 2px solid #374151;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .poker-card-back {
+            background: linear-gradient(45deg, #1e40af, #3b82f6);
+            color: white;
+        }
+        .game-table {
+            background: radial-gradient(ellipse at center, #047857 0%, #065f46 100%);
+            border-radius: 50%;
+            position: relative;
+        }
+        .player-seat {
+            position: absolute;
+            width: 120px;
+            height: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            color: white;
+            font-size: 12px;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            max-width: 300px;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <!-- 顶部导航 -->
+    <nav class="bg-gray-800 shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <a href="/" class="text-xl font-bold text-white">🃏 德州扑克</a>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="playerInfo" class="text-gray-300"></span>
+                    <button id="exitBtn" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm hidden">
+                        退出游戏
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 通知区域 -->
+    <div id="notifications" class="notification"></div>
+
+    <!-- 主内容区域 -->
+    <main class="flex-1">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- 公共JavaScript -->
+    <script>
+        // 全局变量
+        let socket = null;
+        let currentPlayer = null;
+        let currentTable = null;
+
+        // 初始化Socket连接
+        function initSocket() {
+            socket = io({
+                // 配置重连策略
+                reconnection: true,
+                reconnectionAttempts: 3,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 3000,
+                timeout: 20000,
+                // 只使用长轮询，完全避免WebSocket问题
+                transports: ['polling']
+            });
+            
+            socket.on('connect', function() {
+                console.log('✅ Connected to server');
+            });
+            
+            socket.on('error', function(data) {
+                console.error('❌ Socket error:', data);
+                showNotification(data.message, 'error');
+            });
+            
+            socket.on('disconnect', function(reason) {
+                console.log('🔌 Disconnected from server:', reason);
+                showNotification('与服务器断开连接', 'warning');
+            });
+            
+            socket.on('reconnect', function(attemptNumber) {
+                console.log('🔄 Reconnected after', attemptNumber, 'attempts');
+                showNotification('重连成功！', 'success');
+            });
+            
+            socket.on('reconnect_attempt', function(attemptNumber) {
+                console.log('🔄 Reconnect attempt', attemptNumber);
+            });
+            
+            socket.on('reconnect_failed', function() {
+                console.log('❌ Reconnect failed');
+                showNotification('重连失败，请刷新页面', 'error');
+            });
+        }
+
+        // 显示通知
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `p-4 rounded-lg shadow-lg mb-2 ${getNotificationClass(type)}`;
+            notification.textContent = message;
+            
+            const container = document.getElementById('notifications');
+            container.appendChild(notification);
+            
+            // 自动移除通知
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 5000);
+        }
+
+        function getNotificationClass(type) {
+            switch(type) {
+                case 'success': return 'bg-green-600 text-white';
+                case 'error': return 'bg-red-600 text-white';
+                case 'warning': return 'bg-yellow-600 text-white';
+                default: return 'bg-blue-600 text-white';
+            }
+        }
+
+        // 创建扑克牌元素
+        function createCardElement(card, isBack = false) {
+            const cardDiv = document.createElement('div');
+            cardDiv.className = 'poker-card' + (isBack ? ' poker-card-back' : '');
+            
+            if (isBack) {
+                cardDiv.textContent = '🂠';
+            } else {
+                const suitColor = (card.suit === '♥' || card.suit === '♦') ? 'card-suit-red' : 'card-suit-black';
+                cardDiv.innerHTML = `
+                    <span class="${suitColor}">${card.rank}</span>
+                    <span class="${suitColor}">${card.suit}</span>
+                `;
+            }
+            
+            return cardDiv;
+        }
+
+        // 格式化筹码数量
+        function formatChips(chips) {
+            if (chips >= 1000000) {
+                return (chips / 1000000).toFixed(1) + 'M';
+            } else if (chips >= 1000) {
+                return (chips / 1000).toFixed(1) + 'K';
+            }
+            return chips.toString();
+        }
+
+        // 更新玩家信息显示
+        function updatePlayerInfo() {
+            const playerInfoElement = document.getElementById('playerInfo');
+            if (currentPlayer && playerInfoElement) {
+                playerInfoElement.textContent = `玩家: ${currentPlayer.nickname}`;
+                document.getElementById('exitBtn').classList.remove('hidden');
+            }
+        }
+
+        // 退出按钮事件
+        document.getElementById('exitBtn').addEventListener('click', function() {
+            if (confirm('确定要退出游戏吗？')) {
+                localStorage.removeItem('poker_player');
+                location.href = '/';
+            }
+        });
+
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initSocket();
+            
+            // 尝试从本地存储恢复玩家信息
+            const savedPlayer = localStorage.getItem('poker_player');
+            if (savedPlayer) {
+                currentPlayer = JSON.parse(savedPlayer);
+                updatePlayerInfo();
+            }
+        });
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html> 

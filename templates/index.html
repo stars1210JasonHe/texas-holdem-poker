@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}德州扑克游戏 - 主页{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
+    <div class="max-w-md w-full space-y-8 p-8">
+        <!-- 游戏标题 -->
+        <div class="text-center">
+            <div class="text-6xl mb-4">🃏</div>
+            <h1 class="text-4xl font-bold text-white mb-2">德州扑克</h1>
+            <p class="text-gray-300 text-lg">本地局域网多人游戏</p>
+        </div>
+
+        <!-- 登录表单 -->
+        <div class="bg-gray-800 rounded-xl shadow-2xl p-8 border border-gray-700">
+            <div class="space-y-6">
+                <div>
+                    <label for="nickname" class="block text-sm font-medium text-gray-300 mb-2">
+                        输入您的昵称
+                    </label>
+                    <input 
+                        type="text" 
+                        id="nickname" 
+                        name="nickname" 
+                        maxlength="20"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-gray-400"
+                        placeholder="请输入昵称（1-20个字符）"
+                        required
+                    >
+                    <p class="text-xs text-gray-400 mt-1">支持中文、英文、数字和常用符号</p>
+                </div>
+
+                <button 
+                    type="submit" 
+                    id="joinBtn"
+                    class="w-full bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 ease-in-out transform hover:scale-105"
+                >
+                    进入大厅
+                </button>
+            </div>
+        </div>
+
+        <!-- 游戏说明 -->
+        <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+            <h3 class="text-lg font-semibold text-white mb-4">🎮 游戏特色</h3>
+            <ul class="space-y-2 text-gray-300 text-sm">
+                <li class="flex items-center">
+                    <span class="text-green-400 mr-2">✓</span>
+                    支持多人在线对战
+                </li>
+                <li class="flex items-center">
+                    <span class="text-green-400 mr-2">✓</span>
+                    智能AI机器人陪练
+                </li>
+                <li class="flex items-center">
+                    <span class="text-green-400 mr-2">✓</span>
+                    实时胜率计算工具
+                </li>
+                <li class="flex items-center">
+                    <span class="text-green-400 mr-2">✓</span>
+                    记牌助手功能
+                </li>
+                <li class="flex items-center">
+                    <span class="text-green-400 mr-2">✓</span>
+                    标准德州扑克规则
+                </li>
+            </ul>
+        </div>
+
+        <!-- 版本信息 -->
+        <div class="text-center text-gray-500 text-sm">
+            <p>Version 1.0 | 局域网专用版本</p>
+            <p class="mt-1">支持现代浏览器，推荐Chrome/Edge/Firefox</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 页面加载完成后的初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        const nicknameInput = document.getElementById('nickname');
+        const joinBtn = document.getElementById('joinBtn');
+
+        // 检查是否已有保存的玩家信息
+        const savedPlayer = localStorage.getItem('poker_player');
+        if (savedPlayer) {
+            const player = JSON.parse(savedPlayer);
+            // 如果已有玩家信息，直接跳转到大厅
+            location.href = '/lobby';
+            return;
+        }
+
+        // 输入框回车事件
+        nicknameInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                handleJoinGame();
+            }
+        });
+
+        // 加入游戏按钮事件
+        joinBtn.addEventListener('click', handleJoinGame);
+
+        // 输入验证
+        nicknameInput.addEventListener('input', function() {
+            const nickname = this.value.trim();
+            const isValid = nickname.length > 0 && nickname.length <= 20;
+            
+            joinBtn.disabled = !isValid;
+            joinBtn.className = isValid 
+                ? "w-full bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 ease-in-out transform hover:scale-105"
+                : "w-full bg-gray-600 text-gray-300 font-semibold py-3 px-4 rounded-lg cursor-not-allowed";
+        });
+
+        // 自动聚焦到输入框
+        nicknameInput.focus();
+    });
+
+    // 处理加入游戏
+    async function handleJoinGame() {
+        const nickname = document.getElementById('nickname').value.trim();
+        const joinBtn = document.getElementById('joinBtn');
+
+        if (!nickname) {
+            showNotification('请输入昵称', 'warning');
+            return;
+        }
+
+        if (nickname.length > 20) {
+            showNotification('昵称长度不能超过20个字符', 'warning');
+            return;
+        }
+
+        // 禁用按钮，显示加载状态
+        joinBtn.disabled = true;
+        joinBtn.innerHTML = '<span class="animate-spin mr-2">⚪</span>加入中...';
+
+        try {
+            const response = await fetch('/api/join', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    nickname: nickname
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // 保存玩家信息（使用新的数据结构）
+                const playerInfo = {
+                    id: data.player.id,
+                    nickname: data.player.nickname,
+                    chips: data.player.chips
+                };
+                
+                localStorage.setItem('poker_player', JSON.stringify(playerInfo));
+                currentPlayer = playerInfo;
+                
+                showNotification(`欢迎，${data.player.nickname}！`, 'success');
+                
+                // 跳转到大厅
+                setTimeout(() => {
+                    location.href = '/lobby';
+                }, 1000);
+                
+            } else {
+                showNotification(data.message || '加入失败', 'error');
+                // 恢复按钮状态
+                joinBtn.disabled = false;
+                joinBtn.innerHTML = '进入大厅';
+            }
+
+        } catch (error) {
+            console.error('Error joining game:', error);
+            showNotification('网络错误，请重试', 'error');
+            
+            // 恢复按钮状态
+            joinBtn.disabled = false;
+            joinBtn.innerHTML = '进入大厅';
+        }
+    }
+</script>
+{% endblock %} 
