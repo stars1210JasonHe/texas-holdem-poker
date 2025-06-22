@@ -149,27 +149,124 @@ class GameLogger:
         return hand_id
     
     def end_hand(self, hand_id: int, winner_id: str = None, winner_nickname: str = None, 
-                winning_amount: int = 0, final_pot: int = 0, community_cards: List = None):
-        """结束手牌"""
+                winning_amount: int = 0, final_pot: int = 0, community_cards: List = None,
+                showdown_info: Dict = None):
+        """结束手牌，记录详细的摊牌信息"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
+        # 基本手牌结束信息
         cursor.execute('''
             UPDATE hands 
             SET ended_at = CURRENT_TIMESTAMP, status = 'completed',
                 winner_id = ?, winner_nickname = ?, winning_amount = ?, 
-                pot = ?, community_cards = ?
+                pot = ?, community_cards = ?, showdown_info = ?
             WHERE id = ?
         ''', (winner_id, winner_nickname, winning_amount, final_pot, 
-              json.dumps(community_cards or []), hand_id))
+              json.dumps(community_cards or []), json.dumps(showdown_info or {}), hand_id))
+        
+        # 如果有详细的摊牌信息，记录到专门的摊牌表
+        if showdown_info and showdown_info.get('is_showdown') and showdown_info.get('showdown_players'):
+            self._record_showdown_details(hand_id, showdown_info)
         
         conn.commit()
         conn.close()
         
         if winner_nickname:
-            print(f"🏆 手牌结束: {winner_nickname} 获胜 ${winning_amount}")
+            win_reason = ""
+            if showdown_info:
+                if showdown_info.get('win_reason') == 'others_folded':
+                    win_reason = "（其他玩家弃牌）"
+                elif showdown_info.get('win_reason') == 'best_hand':
+                    win_reason = "（摊牌获胜）"
+            print(f"🏆 手牌结束: {winner_nickname} 获胜 ${winning_amount} {win_reason}")
         else:
             print(f"🏁 手牌结束 (Hand ID: {hand_id})")
+    
+    def _record_showdown_details(self, hand_id: int, showdown_info: Dict):
+        """记录详细的摊牌信息"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # 创建摊牌详细记录表（如果不存在）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS showdown_details (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hand_id INTEGER NOT NULL,
+                player_id TEXT NOT NULL,
+                nickname TEXT NOT NULL,
+                is_bot BOOLEAN NOT NULL,
+                hole_cards TEXT NOT NULL,
+                hand_rank TEXT NOT NULL,
+                hand_description TEXT NOT NULL,
+                rank_position INTEGER NOT NULL,
+                result TEXT NOT NULL,
+                winnings INTEGER NOT NULL,
+                final_chips INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (hand_id) REFERENCES hands (id)
+            )
+        ''')
+        
+        # 插入每个玩家的摊牌详情
+        for player_info in showdown_info.get('showdown_players', []):
+            cursor.execute('''
+                INSERT INTO showdown_details (
+                    hand_id, player_id, nickname, is_bot,
+                    hole_cards, hand_rank, hand_description,
+                    rank_position, result, winnings, final_chips
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                hand_id,
+                player_info['player_id'],
+                player_info['nickname'],
+                player_info['is_bot'],
+                json.dumps(player_info['hole_cards']),
+                player_info['hand_name'],
+                player_info['hand_description'],
+                player_info['rank'],
+                player_info['result'],
+                player_info['winnings'],
+                player_info['final_chips']
+            ))
+        
+        conn.commit()
+        conn.close()
+        print(f"📝 摊牌详情已记录 (Hand ID: {hand_id}, 参与玩家: {len(showdown_info.get('showdown_players', []))})")
+        
+    def get_hand_showdown_details(self, hand_id: int) -> List[Dict]:
+        """获取某手牌的详细摊牌信息"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM showdown_details 
+            WHERE hand_id = ?
+            ORDER BY rank_position ASC
+        ''', (hand_id,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        details = []
+        for row in rows:
+            details.append({
+                'id': row[0],
+                'hand_id': row[1],
+                'player_id': row[2],
+                'nickname': row[3],
+                'is_bot': bool(row[4]),
+                'hole_cards': json.loads(row[5]),
+                'hand_rank': row[6],
+                'hand_description': row[7],
+                'rank_position': row[8],
+                'result': row[9],
+                'winnings': row[10],
+                'final_chips': row[11],
+                'created_at': row[12]
+            })
+        
+        return details
     
     def log_player_action(self, hand_id: int, player_id: str, player_nickname: str,
                          action_type: str, amount: int = 0, stage: str = None,
@@ -315,9 +412,11 @@ def log_hand_started(session_id: int, hand_number: int, table_id: str):
     return game_logger.start_hand(session_id, hand_number, table_id)
 
 def log_hand_ended(hand_id: int, winner_id: str = None, winner_nickname: str = None, 
-                  winning_amount: int = 0, final_pot: int = 0):
+                  winning_amount: int = 0, final_pot: int = 0, community_cards: List = None,
+                  showdown_info: Dict = None):
     """记录手牌结束"""
-    game_logger.end_hand(hand_id, winner_id, winner_nickname, winning_amount, final_pot)
+    game_logger.end_hand(hand_id, winner_id, winner_nickname, winning_amount, final_pot, 
+                        community_cards, showdown_info)
 
 def log_player_action(hand_id: int, player_id: str, nickname: str, action: str, 
                      amount: int = 0, stage: str = None, chips_before: int = None, 

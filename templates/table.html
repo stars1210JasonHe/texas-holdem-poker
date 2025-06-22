@@ -218,6 +218,7 @@
         socket.on('table_joined', handleTableJoined);
         socket.on('hand_started', handleHandStarted);
         socket.on('your_cards', handleYourCards);
+        socket.on('your_turn', handleYourTurn);
         socket.on('action_processed', handleActionProcessed);
         socket.on('table_updated', handleTableUpdated);
         socket.on('player_joined', handlePlayerJoined);
@@ -530,6 +531,26 @@
         showNotification('📋 手牌已发放！', 'success');
     }
 
+    function handleYourTurn(data) {
+        console.log('轮到你了:', data);
+        
+        // 检查玩家是否有筹码
+        const myPlayer = currentTableState ? currentTableState.players.find(p => p.id === myPlayerId) : null;
+        if (!myPlayer || myPlayer.chips <= 0 || myPlayer.status === 'broke') {
+            console.log('玩家没有筹码，成为观察者，不显示操作按钮');
+            showNotification('💸 您没有筹码了，只能观察游戏', 'info', 3000);
+            hideActionButtons();
+            return;
+        }
+        
+        const canCheck = data.current_bet === 0 || data.current_bet <= (data.your_bet || 0);
+        const callAmount = Math.max(0, data.current_bet - (data.your_bet || 0));
+        
+        showActionButtons(canCheck, callAmount);
+        showNotification('轮到您行动了', 'info', 2000);
+        addActionLog('系统', 'your_turn', 0, '轮到您行动');
+    }
+
     function handleActionProcessed(data) {
         currentTableState = data.table;
         
@@ -656,6 +677,11 @@
             }
         }
         
+        // 如果有摊牌信息，显示详细的摊牌结果
+        if (data.showdown_info && data.showdown_info.is_showdown && data.showdown_info.showdown_players) {
+            showShowdownDetails(data.showdown_info);
+        }
+        
         // 显示消息
         if (data.message) {
             showNotification(data.message, 'info', 3000);
@@ -666,6 +692,109 @@
         
         // 清空我的手牌显示
         document.getElementById('myCards').innerHTML = '';
+    }
+
+    function showShowdownDetails(showdownInfo) {
+        console.log('🃏 显示摊牌详情:', showdownInfo);
+        
+        // 创建摊牌详情弹窗
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold text-white">🃏 摊牌结果</h3>
+                    <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-white">
+                        <span class="text-2xl">&times;</span>
+                    </button>
+                </div>
+                
+                <!-- 公共牌显示 -->
+                <div class="mb-6">
+                    <h4 class="text-lg font-semibold text-gray-300 mb-2">🎴 公共牌</h4>
+                    <div class="flex gap-2">
+                        ${showdownInfo.community_cards.map(card => 
+                            `<div class="bg-white rounded-lg p-2 text-center min-w-[40px] shadow-md">
+                                <div class="text-lg font-bold ${card.suit === '♠️' || card.suit === '♣️' ? 'text-black' : 'text-red-600'}">
+                                    ${card.rank}${card.suit}
+                                </div>
+                            </div>`
+                        ).join('')}
+                    </div>
+                </div>
+                
+                <!-- 玩家摊牌详情 -->
+                <div class="space-y-4">
+                    <h4 class="text-lg font-semibold text-gray-300">🏆 玩家排名</h4>
+                    ${showdownInfo.showdown_players.map((player, index) => {
+                        const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+                        const playerType = player.is_bot ? '🤖' : '👤';
+                        const resultColor = player.result === 'winner' ? 'text-green-400' : 'text-gray-400';
+                        
+                        return `
+                            <div class="bg-gray-700 rounded-lg p-4 border ${player.result === 'winner' ? 'border-green-500' : 'border-gray-600'}">
+                                <div class="flex items-center justify-between mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-2xl">${rankEmoji}</span>
+                                        <span class="text-lg font-semibold text-white">${playerType} ${player.nickname}</span>
+                                        <span class="${resultColor} font-medium">
+                                            ${player.result === 'winner' ? `赢得 $${player.winnings}` : '败北'}
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex items-center gap-4">
+                                    <!-- 底牌 -->
+                                    <div class="flex gap-1">
+                                        ${player.hole_cards.map(card => 
+                                            `<div class="bg-white rounded p-1 text-center min-w-[35px] text-sm shadow">
+                                                <div class="font-bold ${card.suit === '♠️' || card.suit === '♣️' ? 'text-black' : 'text-red-600'}">
+                                                    ${card.rank}${card.suit}
+                                                </div>
+                                            </div>`
+                                        ).join('')}
+                                    </div>
+                                    
+                                    <!-- 箭头 -->
+                                    <span class="text-gray-400">→</span>
+                                    
+                                    <!-- 牌型 -->
+                                    <div class="flex-1">
+                                        <span class="text-yellow-400 font-semibold">${player.hand_description}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                
+                <div class="mt-6 text-center">
+                    <button onclick="this.closest('.fixed').remove()" 
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg">
+                        确定
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // 3秒后显示关闭提示
+        setTimeout(() => {
+            const hint = document.createElement('div');
+            hint.className = 'absolute top-2 right-2 bg-yellow-600 text-white px-2 py-1 rounded text-sm';
+            hint.textContent = '点击确定或背景关闭';
+            modal.querySelector('.bg-gray-800').appendChild(hint);
+            
+            setTimeout(() => hint.remove(), 2000);
+        }, 3000);
+        
+        // 点击背景关闭
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
     }
 
     function handleNewHandStarted(data) {
@@ -768,7 +897,7 @@
                             ${player.is_bot ? '🤖 ' : ''}${player.nickname} ${isMe ? '(你)' : ''}
                         </div>
                         <div class="text-sm ${statusClass}">
-                            ${getStatusText(player.status)}${player.is_bot ? ' • 机器人' : ''}
+                            ${getPlayerStatusDisplay(player)}${player.is_bot ? ' • 机器人' : ''}
                         </div>
                     </div>
                     <div class="text-right">
@@ -801,14 +930,40 @@
         }
     }
 
-    function getStatusText(status) {
-        const statusTexts = {
-            'waiting': '等待中',
-            'playing': '游戏中',
-            'folded': '已弃牌',
-            'all_in': '全下'
-        };
-        return statusTexts[status] || status;
+    function getPlayerStatusDisplay(player) {
+        let statusText = '';
+        let statusClass = 'bg-gray-600';
+        
+        switch (player.status) {
+            case 'waiting':
+                statusText = '等待中';
+                statusClass = 'bg-blue-600';
+                break;
+            case 'playing':
+                statusText = '游戏中';
+                statusClass = 'bg-green-600';
+                break;
+            case 'folded':
+                statusText = '弃牌';
+                statusClass = 'bg-red-600';
+                break;
+            case 'all_in':
+                statusText = '全下';
+                statusClass = 'bg-purple-600';
+                break;
+            case 'broke':
+                statusText = '观察者 (无筹码)';
+                statusClass = 'bg-gray-500';
+                break;
+            case 'disconnected':
+                statusText = '断线';
+                statusClass = 'bg-red-800';
+                break;
+            default:
+                statusText = player.status;
+        }
+        
+        return `<span class="${statusClass} text-white px-2 py-1 rounded text-xs">${statusText}</span>`;
     }
 
     function syncPlayerIdWithBackend(tableState) {

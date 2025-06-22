@@ -14,6 +14,7 @@ class PlayerStatus(Enum):
     PLAYING = "playing"      # 游戏中
     FOLDED = "folded"        # 弃牌
     ALL_IN = "all_in"        # 全下
+    BROKE = "broke"          # 没有筹码（观察者）
     DISCONNECTED = "disconnected"  # 断线
 
 
@@ -69,7 +70,11 @@ class Player:
         self.is_big_blind = False
         self.has_acted = False
         if self.status not in [PlayerStatus.DISCONNECTED]:
-            self.status = PlayerStatus.PLAYING
+            # 如果没有筹码，设置为观察者状态
+            if self.chips <= 0:
+                self.status = PlayerStatus.BROKE
+            else:
+                self.status = PlayerStatus.PLAYING
     
     def reset_for_new_round(self):
         """为新轮重置玩家状态"""
@@ -82,6 +87,9 @@ class Player:
     
     def can_act(self) -> bool:
         """检查玩家是否可以行动"""
+        # 没有筹码的玩家不能行动，只能观察
+        if self.chips <= 0 or self.status == PlayerStatus.BROKE:
+            return False
         return (self.status == PlayerStatus.PLAYING and 
                 not self.has_acted and 
                 self.chips > 0)
@@ -108,6 +116,11 @@ class Player:
         Returns:
             int: 实际下注金额
         """
+        # 没有筹码的玩家不能下注
+        if self.chips <= 0:
+            print(f"⚠️ 玩家 {self.nickname} 没有筹码，无法下注")
+            return 0
+            
         if amount <= 0:
             return 0
             
@@ -119,9 +132,10 @@ class Player:
         self.total_bet += actual_amount
         self.has_acted = True
         
-        # 如果筹码用完，标记为全下
+        # 如果筹码用完，标记为没有筹码（观察者）
         if self.chips == 0:
-            self.status = PlayerStatus.ALL_IN
+            self.status = PlayerStatus.BROKE
+            print(f"💸 玩家 {self.nickname} 筹码用完，成为观察者")
             
         return actual_amount
     

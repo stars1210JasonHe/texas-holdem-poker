@@ -13,6 +13,7 @@ import eventlet
 import threading
 import sqlite3
 from datetime import datetime
+import json
 
 from poker_engine import Player, Table, Bot, BotLevel
 from poker_engine.player import PlayerAction, PlayerStatus
@@ -70,10 +71,10 @@ def process_bot_actions(table_id: str):
         # 检查是否手牌结束
         if result and result.get('hand_complete'):
             print(f"🏆 机器人处理导致手牌结束")
+            showdown_info = result.get('showdown_info', {})
             winner = result.get('winner')
-            winners = [winner] if winner else []
-            print(f"🏆 准备调用handle_hand_end，winner: {winner}, winners: {winners}")
-            handle_hand_end(table_id, winners)
+            print(f"🏆 准备调用handle_hand_end，winner: {winner}, showdown_info: {showdown_info}")
+            handle_hand_end(table_id, winner, showdown_info)
             return result
         else:
             print(f"🔍 手牌未结束，继续游戏流程")
@@ -84,6 +85,11 @@ def process_bot_actions(table_id: str):
         # 检查是否轮到人类玩家行动
         current_player = table.get_current_player()
         if current_player and not current_player.is_bot:
+            # 检查玩家是否有筹码
+            if current_player.chips <= 0 or current_player.status.value == 'broke':
+                print(f"🚫 玩家 {current_player.nickname} 没有筹码，跳过行动通知")
+                return result
+                
             # 找到该玩家的session并发送行动通知
             player_session = None
             for session_id, session_info in player_sessions.items():
@@ -411,6 +417,73 @@ def get_stats():
         return jsonify({
             'success': False,
             'message': '获取统计信息失败'
+        }), 500
+
+
+@app.route('/api/showdown_history/<table_id>', methods=['GET'])
+def get_showdown_history(table_id):
+    """获取牌桌的摊牌历史记录"""
+    try:
+        from game_logger import game_logger
+        
+        # 获取该牌桌的最近几手摊牌记录
+        with game_logger.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # 查询最近10手的摊牌详情
+            cursor.execute('''
+                SELECT h.id, h.hand_number, h.ended_at, h.winner_nickname, h.pot,
+                       sd.player_id, sd.nickname, sd.is_bot, sd.hole_cards, 
+                       sd.hand_description, sd.rank_position, sd.result, sd.winnings
+                FROM hands h
+                LEFT JOIN showdown_details sd ON h.id = sd.hand_id
+                WHERE h.table_id = ? AND h.status = 'completed' 
+                      AND sd.hand_id IS NOT NULL
+                ORDER BY h.ended_at DESC, sd.rank_position ASC
+                LIMIT 100
+            ''', (table_id,))
+            
+            rows = cursor.fetchall()
+            
+            # 按手牌组织数据
+            hands_data = {}
+            for row in rows:
+                hand_id = row[0]
+                if hand_id not in hands_data:
+                    hands_data[hand_id] = {
+                        'hand_id': hand_id,
+                        'hand_number': row[1],
+                        'ended_at': row[2],
+                        'winner_nickname': row[3],
+                        'pot': row[4],
+                        'players': []
+                    }
+                
+                hands_data[hand_id]['players'].append({
+                    'player_id': row[5],
+                    'nickname': row[6],
+                    'is_bot': bool(row[7]),
+                    'hole_cards': json.loads(row[8]) if row[8] else [],
+                    'hand_description': row[9],
+                    'rank_position': row[10],
+                    'result': row[11],
+                    'winnings': row[12]
+                })
+            
+            # 转换为列表并按时间排序
+            history = list(hands_data.values())
+            history.sort(key=lambda x: x['ended_at'], reverse=True)
+            
+            return jsonify({
+                'success': True,
+                'history': history[:10]  # 只返回最近10手
+            })
+            
+    except Exception as e:
+        print(f"获取摊牌历史失败: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'获取摊牌历史失败: {str(e)}'
         }), 500
 
 
@@ -1203,9 +1276,8 @@ def handle_player_action(data):
             if result.get('hand_complete'):
                 print(f"🏆 玩家动作直接导致手牌结束")
                 hand_ended = True
-                # 注意：牌桌引擎返回的是'winner'而不是'winners'
+                showdown_info = result.get('showdown_info', {})
                 winner = result.get('winner')
-                winners = [winner] if winner else []
             else:
                 # 手牌未结束，处理机器人动作
                 try:
@@ -1217,7 +1289,8 @@ def handle_player_action(data):
                     if bot_result and bot_result.get('hand_complete'):
                         print(f"🏆 机器人动作导致手牌结束")
                         hand_ended = True
-                        winners = [bot_result.get('winner')] if bot_result.get('winner') else []
+                        showdown_info = bot_result.get('showdown_info', {})
+                        winner = bot_result.get('winner')
                     # 注意：process_bot_actions已经会发送状态更新和行动通知了
                 except Exception as bot_error:
                     print(f"处理机器人动作时出错: {bot_error}")
@@ -1227,7 +1300,7 @@ def handle_player_action(data):
             # 统一处理手牌结束后的状态记录
             if hand_ended:
                 print(f"🏆 手牌结束，调用handle_hand_end函数")
-                handle_hand_end(table_id, winners)
+                handle_hand_end(table_id, winner, showdown_info)
             
     except Exception as e:
         print(f"处理玩家动作失败: {e}")
@@ -1493,7 +1566,7 @@ def process_bot_actions_delayed(table_id, delay=1):
         print(f"🤖 开始处理机器人动作 (table_id: {table_id})")
         process_bot_actions(table_id)
 
-def handle_hand_end(table_id, winners):
+def handle_hand_end(table_id, winner, showdown_info):
     """处理手牌结束"""
     try:
         if table_id not in tables:
@@ -1502,18 +1575,28 @@ def handle_hand_end(table_id, winners):
         
         table = tables[table_id]
         
-        # 调试：打印传入的获胜者信息
-        print(f"🏆 handle_hand_end 收到获胜者信息: {winners}")
-        print(f"🏆 获胜者类型: {type(winners)}")
+        # 调试：打印传入的信息
+        print(f"🏆 handle_hand_end 收到获胜者: {winner}")
+        print(f"🏆 摊牌信息: {showdown_info}")
         
         # 如果没有获胜者信息，强制创建一个
-        if not winners or (isinstance(winners, list) and len(winners) == 0):
+        if not winner:
             print("⚠️ 没有获胜者信息，创建默认获胜者")
             if table.players:
                 # 找筹码最多的玩家
                 winner = max(table.players, key=lambda p: p.chips)
-                winners = [winner]
                 print(f"🏆 创建默认获胜者: {winner.nickname}")
+        
+        # 记录手牌结束到数据库
+        if table_id in current_hands:
+            hand_id = current_hands[table_id]
+            winner_id = winner.id if winner else None
+            winner_nickname = winner.nickname if winner else None
+            winning_amount = showdown_info.get('pot', table.pot)
+            community_cards = [card.to_dict() for card in table.community_cards]
+            
+            log_hand_ended(hand_id, winner_id, winner_nickname, 
+                          winning_amount, table.pot, community_cards, showdown_info)
         
         # 保存玩家筹码到数据库
         for player in table.players:
@@ -1523,44 +1606,41 @@ def handle_hand_end(table_id, winners):
         # 处理获胜者信息
         winner_list = []
         winner_message = "手牌结束"
+        showdown_players = []
         
-        if winners:
-            if isinstance(winners, list):
-                if len(winners) > 0:
-                    # 处理列表中的获胜者（可能是Player对象或字典）
-                    winner_list = []
-                    for w in winners:
-                        if hasattr(w, 'nickname'):  # Player对象
-                            winner_list.append({'nickname': w.nickname, 'chips': w.chips})
-                        elif isinstance(w, dict) and 'nickname' in w:  # 字典
-                            winner_list.append({'nickname': w['nickname'], 'chips': w.get('chips', 0)})
-                    
-                    if winner_list:
-                        winner_message = f"手牌结束，{winner_list[0]['nickname']} 获胜"
-                    else:
-                        winner_message = "手牌结束，无获胜者"
-                else:
-                    winner_message = "手牌结束，无获胜者"
+        if winner:
+            winner_list = [{'nickname': winner.nickname, 'chips': winner.chips}]
+            if showdown_info.get('win_reason') == 'others_folded':
+                winner_message = f"手牌结束，{winner.nickname} 获胜（其他玩家弃牌）"
             else:
-                # 单个获胜者（可能是Player对象或字典）
-                if hasattr(winners, 'nickname'):  # Player对象
-                    winner_list = [{'nickname': winners.nickname, 'chips': winners.chips}]
-                    winner_message = f"手牌结束，{winners.nickname} 获胜"
-                elif isinstance(winners, dict) and 'nickname' in winners:  # 字典
-                    winner_list = [{'nickname': winners['nickname'], 'chips': winners.get('chips', 0)}]
-                    winner_message = f"手牌结束，{winners['nickname']} 获胜"
-                else:
-                    winner_list = []
-                    winner_message = "手牌结束，无获胜者"
-        else:
-            winner_message = "手牌结束，无获胜者"
+                winner_message = f"手牌结束，{winner.nickname} 获胜"
+        
+        # 如果有摊牌信息，添加详细信息
+        if showdown_info.get('is_showdown') and showdown_info.get('showdown_players'):
+            showdown_players = []
+            for player_info in showdown_info['showdown_players']:
+                showdown_players.append({
+                    'nickname': player_info['nickname'],
+                    'is_bot': player_info['is_bot'],
+                    'hole_cards': player_info['hole_cards'],
+                    'hole_cards_str': player_info['hole_cards_str'],
+                    'hand_description': player_info['hand_description'],
+                    'rank': player_info['rank'],
+                    'result': player_info['result'],
+                    'winnings': player_info['winnings']
+                })
         
         # 广播手牌结束信息和更新后的游戏状态
         updated_game_state = table.get_table_state()
         socketio.emit('hand_ended', {
             'winners': winner_list,
             'message': winner_message,
-            'table_state': updated_game_state  # 包含更新后的筹码信息
+            'table_state': updated_game_state,  # 包含更新后的筹码信息
+            'showdown_info': {
+                'is_showdown': showdown_info.get('is_showdown', False),
+                'community_cards': showdown_info.get('community_cards', []),
+                'showdown_players': showdown_players
+            }
         }, room=table_id)
         
         # 检查是否还有足够玩家继续游戏

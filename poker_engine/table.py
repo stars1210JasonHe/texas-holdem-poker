@@ -462,7 +462,7 @@ class Table:
         if self.game_stage == GameStage.WAITING or self.game_stage == GameStage.FINISHED:
             return None
         
-        # 只有PLAYING状态的玩家才需要行动
+        # 只有PLAYING状态的玩家才需要行动（排除BROKE观察者）
         active_players = [p for p in self.players if p.status == PlayerStatus.PLAYING]
         if len(active_players) <= 1:
             return None
@@ -471,10 +471,10 @@ class Table:
         
         # 按照简单顺序检查所有还在游戏的玩家
         for i, player in enumerate(self.players):
-            print(f"检查位置{i}的玩家 {player.nickname}：状态={player.status.value}, 投注=${player.current_bet}, 已行动={player.has_acted}")
+            print(f"检查位置{i}的玩家 {player.nickname}：状态={player.status.value}, 投注=${player.current_bet}, 已行动={player.has_acted}, 筹码=${player.chips}")
             
-            # 只考虑还在游戏中的玩家
-            if player.status == PlayerStatus.PLAYING:
+            # 只考虑还在游戏中的玩家（排除没有筹码的观察者）
+            if player.status == PlayerStatus.PLAYING and player.chips > 0:
                 # 检查玩家是否需要行动
                 needs_action = (not player.has_acted or 
                               (player.current_bet < self.current_bet and player.chips > 0))
@@ -509,7 +509,8 @@ class Table:
     
     def is_betting_round_complete(self) -> bool:
         """检查当前投注回合是否完成"""
-        active_players = [p for p in self.players if p.status == PlayerStatus.PLAYING]
+        # 只考虑有筹码且还在游戏中的玩家
+        active_players = [p for p in self.players if p.status == PlayerStatus.PLAYING and p.chips > 0]
         
         if len(active_players) <= 1:
             return True
@@ -588,17 +589,30 @@ class Table:
         
         return False
     
-    def _determine_winner(self) -> Optional[Player]:
-        """确定获胜者"""
+    def _determine_winner(self) -> Dict:
+        """确定获胜者，返回详细的摊牌信息"""
         active_players = [p for p in self.players if p.status == PlayerStatus.PLAYING]
         
+        showdown_info = {
+            'winner': None,
+            'showdown_players': [],
+            'community_cards': [card.to_dict() for card in self.community_cards],
+            'pot': self.pot,
+            'is_showdown': len(active_players) > 1
+        }
+        
         if len(active_players) == 1:
-            # 只有一个活跃玩家，直接获胜
+            # 只有一个活跃玩家，直接获胜（没有摊牌）
             winner = active_players[0]
             winner.chips += self.pot
             self.game_stage = GameStage.FINISHED
-            print(f"玩家 {winner.nickname} 获胜，赢得底池 ${self.pot}")
-            return winner
+            
+            showdown_info['winner'] = winner
+            showdown_info['is_showdown'] = False
+            showdown_info['win_reason'] = 'others_folded'
+            
+            print(f"玩家 {winner.nickname} 获胜（其他玩家弃牌），赢得底池 ${self.pot}")
+            return showdown_info
         
         if len(active_players) > 1 and self.game_stage == GameStage.SHOWDOWN:
             # 摊牌阶段 - 显示所有玩家手牌
@@ -613,8 +627,6 @@ class Table:
             # 比较手牌强度
             from .hand_evaluator import HandEvaluator
             
-            best_hand = None
-            winner = None
             player_hands = []
             
             for player in active_players:
@@ -623,30 +635,65 @@ class Table:
                     card2_str = f"{player.hole_cards[1].rank.symbol}{player.hole_cards[1].suit.value}"
                     
                     hand_rank, best_cards = HandEvaluator.evaluate_hand(player.hole_cards, self.community_cards)
+                    hand_description = HandEvaluator.hand_to_string((hand_rank, best_cards))
                     player_type = "🤖" if player.is_bot else "👤"
                     
-                    print(f"{player_type} {player.nickname}: {card1_str} {card2_str} -> {hand_rank.value[1]}")
+                    print(f"{player_type} {player.nickname}: {card1_str} {card2_str} -> {hand_description}")
                     
-                    player_hands.append({
+                    player_hand_info = {
                         'player': player,
+                        'player_id': player.id,
+                        'nickname': player.nickname,
+                        'is_bot': player.is_bot,
+                        'hole_cards': [card.to_dict() for card in player.hole_cards],
+                        'hole_cards_str': f"{card1_str} {card2_str}",
                         'hand_rank': hand_rank,
-                        'hand_name': hand_rank.value[1]
-                    })
+                        'hand_name': hand_rank.value[1],
+                        'hand_description': hand_description,
+                        'rank_value': hand_rank.rank_value,
+                        'kickers': best_cards
+                    }
                     
-                    if best_hand is None or hand_rank.rank_value > best_hand.rank_value:
-                        best_hand = hand_rank
-                        winner = player
+                    player_hands.append(player_hand_info)
             
-            print("-" * 40)
-            if winner:
+            # 按手牌强度排序（降序，最强的在前面）
+            player_hands.sort(key=lambda x: (x['rank_value'], x['kickers']), reverse=True)
+            
+            # 确定获胜者和排名
+            winner = None
+            if player_hands:
+                winner = player_hands[0]['player']
                 winner.chips += self.pot
                 self.game_stage = GameStage.FINISHED
+                
+                # 添加排名信息
+                for i, hand_info in enumerate(player_hands):
+                    hand_info['rank'] = i + 1
+                    hand_info['final_chips'] = hand_info['player'].chips
+                    if i == 0:
+                        hand_info['result'] = 'winner'
+                        hand_info['winnings'] = self.pot
+                    else:
+                        hand_info['result'] = 'loser'
+                        hand_info['winnings'] = 0
+                
+                showdown_info['winner'] = winner
+                showdown_info['showdown_players'] = player_hands
+                showdown_info['win_reason'] = 'best_hand'
+                
+                print("-" * 40)
+                print("🏆 摊牌结果排名:")
+                for i, hand_info in enumerate(player_hands):
+                    rank_emoji = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"{i+1}."
+                    player_type = "🤖" if hand_info['is_bot'] else "👤"
+                    print(f"{rank_emoji} {player_type} {hand_info['nickname']}: {hand_info['hand_description']} "
+                          f"({'赢得 $' + str(self.pot) if i == 0 else '输掉'})")
+                
                 player_type = "🤖" if winner.is_bot else "👤"
-                print(f"🏆 {player_type} {winner.nickname} 获胜！手牌：{best_hand.value[1]}，赢得底池 ${self.pot}")
+                print(f"🏆 {player_type} {winner.nickname} 获胜！手牌：{player_hands[0]['hand_description']}，赢得底池 ${self.pot}")
                 print("=" * 60)
-                return winner
         
-        return None
+        return showdown_info
     
     def process_game_flow(self) -> Dict:
         """处理游戏流程，返回状态更新"""
@@ -675,11 +722,12 @@ class Table:
             if self.is_hand_complete():
                 # 手牌结束
                 print("手牌结束，确定获胜者...")
-                winner = self._determine_winner()
+                showdown_result = self._determine_winner()
                 result['hand_complete'] = True
-                result['winner'] = winner.to_dict() if winner else None
-                if winner:
-                    result['message'] = f"{winner.nickname} 获胜，赢得 ${self.pot}"
+                result['showdown_info'] = showdown_result
+                result['winner'] = showdown_result.get('winner', None)
+                if result['winner']:
+                    result['message'] = f"{result['winner'].nickname} 获胜，赢得 ${showdown_result['pot']}"
             else:
                 # 进入下一阶段
                 print(f"进入下一阶段，当前阶段: {self.game_stage.value}")

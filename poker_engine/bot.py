@@ -58,6 +58,11 @@ class Bot(Player):
         """
         初级机器人策略：50% 跟注，20% 加注（最小），30% 弃牌，无诈唬
         """
+        # 如果没有筹码，机器人成为观察者，不再行动
+        if self.chips <= 0:
+            print(f"🤖💸 机器人 {self.nickname} 没有筹码，成为观察者")
+            return PlayerAction.FOLD, 0
+            
         community_cards = game_state.get('community_cards', [])
         current_bet = game_state.get('current_bet', 0)
         min_raise = game_state.get('min_raise', current_bet * 2)
@@ -73,10 +78,6 @@ class Bot(Player):
         
         # 计算需要跟注的金额
         call_amount = current_bet - self.current_bet
-        
-        # 如果没有筹码，只能弃牌或全下
-        if self.chips == 0:
-            return PlayerAction.FOLD, 0
         
         # 如果不需要跟注，可以过牌
         if call_amount == 0:
@@ -120,6 +121,11 @@ class Bot(Player):
         """
         中级机器人策略：基于1000次蒙特卡洛评估；EV > 0时加注至2.5 BB
         """
+        # 如果没有筹码，机器人成为观察者，不再行动
+        if self.chips <= 0:
+            print(f"🤖💸 机器人 {self.nickname} 没有筹码，成为观察者")
+            return PlayerAction.FOLD, 0
+            
         community_cards = game_state.get('community_cards', [])
         current_bet = game_state.get('current_bet', 0)
         big_blind = game_state.get('big_blind', 20)
@@ -132,10 +138,6 @@ class Bot(Player):
         # 计算期望值
         call_amount = current_bet - self.current_bet
         pot_odds = call_amount / (pot_size + call_amount) if (pot_size + call_amount) > 0 else 1
-        
-        # 如果没有筹码
-        if self.chips == 0:
-            return PlayerAction.FOLD, 0
         
         # 如果不需要跟注
         if call_amount == 0:
@@ -172,6 +174,11 @@ class Bot(Player):
         """
         高级机器人策略：考虑位置、对手下注模式、诈唬
         """
+        # 如果没有筹码，机器人成为观察者，不再行动
+        if self.chips <= 0:
+            print(f"🤖💸 机器人 {self.nickname} 没有筹码，成为观察者")
+            return PlayerAction.FOLD, 0
+            
         community_cards = game_state.get('community_cards', [])
         current_bet = game_state.get('current_bet', 0)
         big_blind = game_state.get('big_blind', 20)
@@ -196,10 +203,6 @@ class Bot(Player):
         bluff_probability = 0.05 + (0.1 if position == 'late' else 0)
         
         call_amount = current_bet - self.current_bet
-        
-        # 如果没有筹码
-        if self.chips == 0:
-            return PlayerAction.FOLD, 0
         
         # 诈唬决策
         should_bluff = (random.random() < bluff_probability and 
