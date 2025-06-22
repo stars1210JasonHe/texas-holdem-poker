@@ -62,28 +62,28 @@ def process_bot_actions(table_id: str):
             print(f"🛑 游戏已结束，停止机器人处理 (table_id: {table_id})")
             return None
         
-        result = table.process_bot_actions()
-        
+                result = table.process_bot_actions()
+                
         # 调试：打印机器人处理结果
         print(f"🤖 机器人处理结果: {result}")
         print(f"🤖 游戏阶段: {table.game_stage.value}")
         
         # 检查是否手牌结束
-        if result and result.get('hand_complete'):
+                if result and result.get('hand_complete'):
             print(f"🏆 机器人处理导致手牌结束")
-            showdown_info = result.get('showdown_info', {})
-            winner = result.get('winner')
+                    showdown_info = result.get('showdown_info', {})
+                    winner = result.get('winner')
             print(f"🏆 准备调用handle_hand_end，winner: {winner}, showdown_info: {showdown_info}")
-            handle_hand_end(table_id, winner, showdown_info)
+                    handle_hand_end(table_id, winner, showdown_info)
             return result
         else:
             print(f"🔍 手牌未结束，继续游戏流程")
-        
+                
         # 广播更新后的桌面状态
-        socketio.emit('table_updated', table.get_table_state(), room=table_id)
-        
+                socketio.emit('table_updated', table.get_table_state(), room=table_id)
+                
         # 检查是否轮到人类玩家行动
-        current_player = table.get_current_player()
+                current_player = table.get_current_player()
         if current_player and not current_player.is_bot:
             # 检查玩家是否有筹码
             if current_player.chips <= 0 or current_player.status.value == 'broke':
@@ -92,22 +92,22 @@ def process_bot_actions(table_id: str):
                 
             # 找到该玩家的session并发送行动通知
             player_session = None
-            for session_id, session_info in player_sessions.items():
-                if session_info['player_id'] == current_player.id:
+                    for session_id, session_info in player_sessions.items():
+                        if session_info['player_id'] == current_player.id:
                     player_session = session_id
                     break
             
             if player_session:
                 print(f"🎯 轮到人类玩家 {current_player.nickname} 行动")
-                socketio.emit('your_turn', {
-                    'current_bet': table.current_bet,
-                    'min_bet': table.big_blind,
-                    'pot': table.pot,
-                    'your_bet': current_player.current_bet,
-                    'your_chips': current_player.chips
+                            socketio.emit('your_turn', {
+                                'current_bet': table.current_bet,
+                                'min_bet': table.big_blind,
+                                'pot': table.pot,
+                                'your_bet': current_player.current_bet,
+                                'your_chips': current_player.chips
                 }, room=player_session)
-        
-        return result
+                
+                return result
     except Exception as e:
         print(f"❌ 处理机器人动作失败: {e}")
         return None
@@ -364,6 +364,8 @@ def get_tables():
                 'max_players': table_data['max_players'],
                 'current_players': table_data['player_count'],
                 'game_stage': table_data['game_stage'],
+                'game_mode': table_data.get('game_mode', 'blinds'),
+                'ante_percentage': table_data.get('ante_percentage', 0.02),
                 'created_by': table_data['creator_nickname'],
                 'created_at': table_data['created_at']
             }
@@ -444,7 +446,7 @@ def get_showdown_history(table_id):
             ''', (table_id,))
             
             rows = cursor.fetchall()
-            
+                
             # 按手牌组织数据
             hands_data = {}
             for row in rows:
@@ -484,6 +486,131 @@ def get_showdown_history(table_id):
         return jsonify({
             'success': False,
             'message': f'获取摊牌历史失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/player_showdown_summary/<player_id>', methods=['GET'])
+def get_player_showdown_summary(player_id):
+    """获取玩家摊牌统计摘要"""
+    try:
+        from game_logger import game_logger
+        
+        with game_logger.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # 查询玩家的摊牌统计
+            cursor.execute('''
+                SELECT 
+                    COUNT(*) as total_showdowns,
+                    SUM(CASE WHEN result = 'winner' THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN result = 'loser' THEN 1 ELSE 0 END) as losses,
+                    SUM(winnings) as total_winnings,
+                    AVG(CASE WHEN result = 'winner' THEN winnings ELSE 0 END) as average_winnings,
+                    nickname
+                FROM showdown_details 
+                WHERE player_id = ?
+                GROUP BY player_id
+            ''', (player_id,))
+            
+            row = cursor.fetchone()
+            
+            if not row or row[0] == 0:
+                return jsonify({
+                    'success': True,
+                    'has_data': False,
+                    'message': '暂无摊牌记录'
+                })
+            
+            total_showdowns, wins, losses, total_winnings, avg_winnings, nickname = row
+            win_rate = round((wins / total_showdowns * 100), 1) if total_showdowns > 0 else 0
+            
+            # 获取手牌类型分布
+                cursor.execute('''
+                SELECT hand_rank, COUNT(*) as count
+                    FROM showdown_details
+                WHERE player_id = ?
+                GROUP BY hand_rank
+                ORDER BY count DESC
+            ''', (player_id,))
+            
+            hand_types = dict(cursor.fetchall())
+            
+            return jsonify({
+            'success': True,
+                'has_data': True,
+                'nickname': nickname,
+                'overall_stats': {
+                    'total_showdowns': total_showdowns,
+                    'wins': wins,
+                    'losses': losses,
+                    'win_rate': win_rate,
+                    'total_winnings': int(total_winnings) if total_winnings else 0,
+                    'average_winnings': round(avg_winnings, 2) if avg_winnings else 0
+                },
+                'hand_type_distribution': hand_types
+        })
+        
+    except Exception as e:
+        print(f"获取玩家摊牌统计失败: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'获取玩家摊牌统计失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/player_showdown_history/<player_id>', methods=['GET'])
+def get_player_showdown_history(player_id):
+    """获取玩家摊牌历史记录"""
+    try:
+        from game_logger import game_logger
+        limit = request.args.get('limit', 10, type=int)
+        limit = min(limit, 50)  # 最多50条记录
+        
+        with game_logger.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # 查询玩家的摊牌历史
+            cursor.execute('''
+                SELECT 
+                    sd.hand_id, h.hand_number, h.ended_at, h.winner_nickname, h.pot,
+                    sd.nickname, sd.is_bot, sd.hole_cards, sd.hand_description,
+                    sd.rank_position, sd.result, sd.winnings
+                FROM showdown_details sd
+                JOIN hands h ON sd.hand_id = h.id
+                WHERE sd.player_id = ?
+                ORDER BY h.ended_at DESC
+                LIMIT ?
+            ''', (player_id, limit))
+            
+            rows = cursor.fetchall()
+            
+            history = []
+            for row in rows:
+                history.append({
+                    'hand_id': row[0],
+                    'hand_number': row[1],
+                    'ended_at': row[2],
+                    'winner_nickname': row[3],
+                    'pot': row[4],
+                    'nickname': row[5],
+                    'is_bot': bool(row[6]),
+                    'hole_cards': json.loads(row[7]) if row[7] else [],
+                    'hand_description': row[8],
+                    'rank_position': row[9],
+                    'result': row[10],
+                    'winnings': row[11]
+                })
+            
+                return jsonify({
+                    'success': True,
+                'history': history
+            })
+            
+    except Exception as e:
+        print(f"获取玩家摊牌历史失败: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'获取玩家摊牌历史失败: {str(e)}'
         }), 500
 
 
@@ -1108,6 +1235,107 @@ def handle_add_bot(data):
         emit('error', {'message': f'添加机器人失败: {str(e)}'})
 
 
+@socketio.on('create_table')
+def handle_create_table(data):
+    """创建房间 - 支持新游戏模式"""
+    try:
+        session_id = request.sid
+        
+        if session_id not in player_sessions:
+            emit('error', {'message': '请先登录'})
+            return
+        
+        player_id = player_sessions[session_id]['player_id']
+        
+        # 验证房间参数
+        title = data.get('title', '').strip()
+        if not title:
+            title = '新房间'
+        
+        small_blind = int(data.get('small_blind', 10))
+        big_blind = int(data.get('big_blind', 20))
+        max_players = int(data.get('max_players', 6))
+        initial_chips = int(data.get('initial_chips', 1000))
+        game_mode = data.get('game_mode', 'blinds')  # 新增游戏模式
+        ante_percentage = float(data.get('ante_percentage', 0.02))  # 新增按比例下注
+        
+        # 验证游戏模式
+        if game_mode not in ['blinds', 'ante']:
+            emit('error', {'message': '无效的游戏模式'})
+            return
+        
+        # 验证参数范围
+        if game_mode == 'blinds' and small_blind >= big_blind:
+            emit('error', {'message': '大盲注必须大于小盲注'})
+            return
+        
+        if ante_percentage < 0.001 or ante_percentage > 0.1:
+            emit('error', {'message': '按比例下注必须在0.1%到10%之间'})
+            return
+        
+        # 创建房间到数据库
+        table_id = db.create_table(
+            title=title,
+            created_by=player_id,
+            small_blind=small_blind,
+            big_blind=big_blind,
+            max_players=max_players,
+            initial_chips=initial_chips,
+            game_mode=game_mode,
+            ante_percentage=ante_percentage
+        )
+        
+        # 创建内存中的Table对象
+        table = Table(
+            table_id=table_id,
+            title=title,
+            small_blind=small_blind,
+            big_blind=big_blind,
+            max_players=max_players,
+            initial_chips=initial_chips,
+            game_mode=game_mode,
+            ante_percentage=ante_percentage
+        )
+        tables[table_id] = table
+        
+        # 处理机器人配置
+        bots_config = data.get('bots', {})
+        for level, count in bots_config.items():
+            for _ in range(count):
+                # 添加机器人逻辑
+                from poker_engine.bot import Bot, BotLevel
+                level_mapping = {
+                    'beginner': BotLevel.BEGINNER,
+                    'intermediate': BotLevel.INTERMEDIATE,
+                    'advanced': BotLevel.ADVANCED
+                }
+                bot_level = level_mapping.get(level, BotLevel.BEGINNER)
+                
+                bot_id = f"bot_{uuid.uuid4().hex[:8]}"
+        bot_names = {
+                    BotLevel.BEGINNER: ['小新手', '初学者', '菜鸟', '新人王'],
+                    BotLevel.INTERMEDIATE: ['中级高手', '经验玩家', '稳定发挥', '技术流'],
+                    BotLevel.ADVANCED: ['职业选手', '高级玩家', '德州专家', '王者归来']
+        }
+        
+                import random
+                bot_nickname = random.choice(bot_names[bot_level])
+                bot = Bot(bot_id, bot_nickname, initial_chips, bot_level)
+                table.add_player(bot)
+        
+        emit('room_created', {
+            'success': True,
+                        'table_id': table_id,
+            'message': f'房间"{title}"创建成功！'
+        })
+        
+        print(f"🎯 房间创建成功: {title} (模式: {game_mode}) by {player_id}")
+            
+    except Exception as e:
+        print(f"创建房间失败: {e}")
+        emit('error', {'message': f'创建房间失败: {str(e)}'})
+
+
 @socketio.on('start_hand')
 def handle_start_hand():
     """开始手牌"""
@@ -1497,7 +1725,7 @@ def handle_vote_next_round(data):
         if all_voted:
             print(f"🎮 所有人投票完成，调用start_next_round")
             start_next_round(table_id)
-            
+                        
     except Exception as e:
         print(f"下一轮投票错误: {e}")
         emit('error', {'message': '投票失败'})
@@ -1579,19 +1807,38 @@ def handle_hand_end(table_id, winner, showdown_info):
         print(f"🏆 handle_hand_end 收到获胜者: {winner}")
         print(f"🏆 摊牌信息: {showdown_info}")
         
-        # 如果没有获胜者信息，强制创建一个
-        if not winner:
+        # 确保 winner 是玩家对象，而不是字典
+        winner_player = None
+        if winner:
+            if hasattr(winner, 'nickname'):
+                # winner 是玩家对象
+                winner_player = winner
+            elif isinstance(winner, dict):
+                # winner 是字典，需要转换为玩家对象
+                winner_id = winner.get('id')
+                if winner_id:
+                    winner_player = table.get_player(winner_id)
+                if not winner_player:
+                    # 如果找不到，根据昵称查找
+                    winner_nickname = winner.get('nickname')
+                    for player in table.players:
+                        if player.nickname == winner_nickname:
+                            winner_player = player
+                            break
+        
+        # 如果还没有找到获胜者，强制创建一个
+        if not winner_player:
             print("⚠️ 没有获胜者信息，创建默认获胜者")
             if table.players:
                 # 找筹码最多的玩家
-                winner = max(table.players, key=lambda p: p.chips)
-                print(f"🏆 创建默认获胜者: {winner.nickname}")
+                winner_player = max(table.players, key=lambda p: p.chips)
+                print(f"🏆 创建默认获胜者: {winner_player.nickname}")
         
         # 记录手牌结束到数据库
         if table_id in current_hands:
             hand_id = current_hands[table_id]
-            winner_id = winner.id if winner else None
-            winner_nickname = winner.nickname if winner else None
+            winner_id = winner_player.id if winner_player else None
+            winner_nickname = winner_player.nickname if winner_player else None
             winning_amount = showdown_info.get('pot', table.pot)
             community_cards = [card.to_dict() for card in table.community_cards]
             
@@ -1608,12 +1855,12 @@ def handle_hand_end(table_id, winner, showdown_info):
         winner_message = "手牌结束"
         showdown_players = []
         
-        if winner:
-            winner_list = [{'nickname': winner.nickname, 'chips': winner.chips}]
+        if winner_player:
+            winner_list = [{'nickname': winner_player.nickname, 'chips': winner_player.chips}]
             if showdown_info.get('win_reason') == 'others_folded':
-                winner_message = f"手牌结束，{winner.nickname} 获胜（其他玩家弃牌）"
-            else:
-                winner_message = f"手牌结束，{winner.nickname} 获胜"
+                winner_message = f"手牌结束，{winner_player.nickname} 获胜（其他玩家弃牌）"
+                    else:
+                winner_message = f"手牌结束，{winner_player.nickname} 获胜"
         
         # 如果有摊牌信息，添加详细信息
         if showdown_info.get('is_showdown') and showdown_info.get('showdown_players'):

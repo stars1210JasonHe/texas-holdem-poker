@@ -11,7 +11,7 @@
                 <div>
                     <h1 class="text-xl font-bold text-white" id="tableTitle">牌桌</h1>
                     <p class="text-gray-300 text-sm">
-                        盲注: <span id="blindInfo">10/20</span> | 
+                        <span id="gameModeInfo">盲注: <span id="blindInfo">10/20</span></span> | 
                         底池: <span id="potAmount">0</span> | 
                         手牌: <span id="handNumber">0</span>
                     </p>
@@ -129,6 +129,18 @@
                 </div>
             </div>
 
+            <!-- 个人历史记录 -->
+            <div class="bg-gray-700 rounded-lg p-4 mt-4">
+                <h3 class="text-lg font-semibold text-white mb-2">个人记录
+                    <button id="viewHistoryBtn" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm ml-2">
+                        📊 查看历史
+                    </button>
+                </h3>
+                <div id="playerStats" class="text-sm text-gray-300">
+                    <div class="text-gray-500">点击查看历史记录加载个人统计</div>
+                </div>
+            </div>
+
 
         </div>
     </div>
@@ -213,6 +225,9 @@
         
         // 刷新状态按钮
         document.getElementById('refreshStateBtn').addEventListener('click', refreshGameState);
+        
+        // 查看历史记录按钮
+        document.getElementById('viewHistoryBtn').addEventListener('click', viewPlayerHistory);
 
         // Socket事件监听
         socket.on('table_joined', handleTableJoined);
@@ -422,7 +437,18 @@
         if (amount && amount > 0) {
             // 判断是下注还是加注
             if (currentTableState && currentTableState.current_bet > 0) {
-                playerAction('raise', amount);
+                // 在ante模式下，如果所有玩家投注相等，允许下注
+                const myPlayer = currentTableState.players.find(p => p.id === myPlayerId);
+                const isAnteMode = currentTableState.game_mode === 'ante';
+                const myBetEqualsCurrentBet = myPlayer && myPlayer.current_bet === currentTableState.current_bet;
+                
+                if (isAnteMode && myBetEqualsCurrentBet) {
+                    // ante模式下，玩家在ante基础上下注
+                    playerAction('bet', amount);
+                } else {
+                    // 常规模式或需要加注的情况
+                    playerAction('raise', amount);
+                }
             } else {
                 playerAction('bet', amount);
             }
@@ -455,7 +481,13 @@
             checkBtn.classList.remove('hidden');
             callBtn.classList.add('hidden');
             betBtn.classList.remove('hidden');
-            raiseBtn.classList.add('hidden');
+            
+            // 在ante模式下，即使可以过牌，也要显示加注按钮
+            if (currentTableState && currentTableState.game_mode === 'ante') {
+                raiseBtn.classList.remove('hidden');
+            } else {
+                raiseBtn.classList.add('hidden');
+            }
         } else {
             // 需要跟注时，显示跟注和加注
             checkBtn.classList.add('hidden');
@@ -822,7 +854,16 @@
 
         // 更新基本信息
         document.getElementById('tableTitle').textContent = currentTableState.title;
-        document.getElementById('blindInfo').textContent = `${currentTableState.small_blind}/${currentTableState.big_blind}`;
+        // 更新游戏模式和盲注信息
+        const gameModeInfo = document.getElementById('gameModeInfo');
+        const blindInfo = document.getElementById('blindInfo');
+        
+        if (currentTableState.game_mode === 'ante') {
+            const antePercentage = (currentTableState.ante_percentage * 100).toFixed(1);
+            gameModeInfo.innerHTML = `⚖️ 按比例: <span id="blindInfo">${antePercentage}%</span>`;
+        } else {
+            gameModeInfo.innerHTML = `🎯 盲注: <span id="blindInfo">${currentTableState.small_blind}/${currentTableState.big_blind}</span>`;
+        }
         document.getElementById('potAmount').textContent = currentTableState.pot;
         document.getElementById('potDisplay').textContent = currentTableState.pot;
         document.getElementById('handNumber').textContent = currentTableState.hand_number;
@@ -1249,6 +1290,247 @@
     
 
     
+    // 查看个人历史记录
+    function viewPlayerHistory() {
+        if (!myPlayerId) {
+            showNotification('请先登录才能查看历史记录', 'error');
+            return;
+        }
+        
+        console.log('📊 查看玩家历史记录:', myPlayerId);
+        
+        // 显示加载状态
+        const statsDiv = document.getElementById('playerStats');
+        statsDiv.innerHTML = '<div class="text-yellow-400">🔄 加载历史记录中...</div>';
+        
+        // 获取玩家摊牌历史和统计
+        Promise.all([
+            fetch(`/api/player_showdown_summary/${myPlayerId}`).then(r => r.json()),
+            fetch(`/api/player_showdown_history/${myPlayerId}?limit=10`).then(r => r.json())
+        ]).then(([summaryData, historyData]) => {
+            if (summaryData.success && historyData.success) {
+                displayPlayerHistory(summaryData, historyData);
+            } else {
+                statsDiv.innerHTML = '<div class="text-red-400">❌ 加载历史记录失败</div>';
+            }
+        }).catch(error => {
+            console.error('获取历史记录失败:', error);
+            statsDiv.innerHTML = '<div class="text-red-400">❌ 网络错误，请重试</div>';
+        });
+    }
+    
+    function displayPlayerHistory(summaryData, historyData) {
+        const statsDiv = document.getElementById('playerStats');
+        
+        if (!summaryData.has_data) {
+            statsDiv.innerHTML = '<div class="text-gray-400">🎮 还没有摊牌记录，开始游戏来创建历史吧！</div>';
+            return;
+        }
+        
+        const stats = summaryData.overall_stats;
+        const history = historyData.history || [];
+        
+        // 生成统计信息HTML
+        const statsHTML = `
+            <div class="space-y-2">
+                <!-- 基本统计 -->
+                <div class="bg-gray-600 rounded p-3">
+                    <h4 class="text-white font-semibold mb-2">📈 总体统计</h4>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div>摊牌次数: <span class="text-yellow-400 font-bold">${stats.total_showdowns}</span></div>
+                        <div>胜率: <span class="text-green-400 font-bold">${stats.win_rate}%</span></div>
+                        <div>获胜: <span class="text-green-400">${stats.wins}</span></div>
+                        <div>失败: <span class="text-red-400">${stats.losses}</span></div>
+                        <div>总奖金: <span class="text-yellow-400">$${stats.total_winnings}</span></div>
+                        <div>平均奖金: <span class="text-blue-400">$${stats.average_winnings}</span></div>
+                    </div>
+                </div>
+                
+                <!-- 手牌类型分布 -->
+                ${summaryData.hand_type_distribution && summaryData.hand_type_distribution.length > 0 ? `
+                    <div class="bg-gray-600 rounded p-3">
+                        <h4 class="text-white font-semibold mb-2">🃏 常见手牌类型</h4>
+                        <div class="space-y-1 text-xs">
+                            ${summaryData.hand_type_distribution.slice(0, 5).map(hand => `
+                                <div class="flex justify-between">
+                                    <span class="text-gray-300">${hand.hand_type}</span>
+                                    <span class="text-yellow-400">${hand.count}次 (${hand.percentage}%)</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+                
+                <!-- 最近历史记录 -->
+                ${history.length > 0 ? `
+                    <div class="bg-gray-600 rounded p-3">
+                        <h4 class="text-white font-semibold mb-2">📋 最近摊牌记录</h4>
+                        <div class="max-h-40 overflow-y-auto space-y-2 text-xs">
+                            ${history.slice(0, 5).map(record => {
+                                const result = record.my_result && record.my_result.result === 'winner' ? '🏆 胜' : '💔 负';
+                                const resultColor = record.my_result && record.my_result.result === 'winner' ? 'text-green-400' : 'text-red-400';
+                                const myCards = record.my_result ? record.my_result.hole_cards : [];
+                                const myHand = record.my_result ? record.my_result.hand_description : '';
+                                const myRank = record.my_result ? `#${record.my_result.rank_position}` : '';
+                                const winnings = record.my_result ? record.my_result.winnings : 0;
+                                
+                                return `
+                                    <div class="border-b border-gray-500 pb-2">
+                                        <div class="flex justify-between items-start">
+                                            <div>
+                                                <span class="${resultColor} font-bold">${result}</span>
+                                                <span class="text-gray-300">${myRank}</span>
+                                                ${winnings > 0 ? `<span class="text-yellow-400">+$${winnings}</span>` : ''}
+                                            </div>
+                                            <span class="text-gray-400 text-xs">
+                                                ${new Date(record.ended_at).toLocaleDateString()}
+                                            </span>
+                                        </div>
+                                        <div class="text-gray-300 mt-1">
+                                            手牌: ${myCards.map(c => `${c.rank}${c.suit}`).join(' ')}
+                                        </div>
+                                        <div class="text-blue-400">${myHand}</div>
+                                        ${record.opponents.length > 0 ? `
+                                            <div class="text-gray-500 text-xs mt-1">
+                                                对手: ${record.opponents.slice(0, 2).map(op => 
+                                                    `${op.is_bot ? '🤖' : '👤'}${op.nickname}`
+                                                ).join(', ')}${record.opponents.length > 2 ? '...' : ''}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                        <button onclick="showDetailedHistory()" class="mt-2 bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-xs w-full">
+                            查看详细历史
+                        </button>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+        
+        statsDiv.innerHTML = statsHTML;
+    }
+    
+    function showDetailedHistory() {
+        if (!myPlayerId) return;
+        
+        // 获取详细历史记录和统计摘要
+        Promise.all([
+            fetch(`/api/player_showdown_history/${myPlayerId}?limit=30`).then(r => r.json()),
+            fetch(`/api/player_showdown_summary/${myPlayerId}`).then(r => r.json())
+        ]).then(([historyData, summaryData]) => {
+            if (historyData.success && summaryData.success) {
+                // 合并数据
+                const combinedData = {
+                    nickname: summaryData.nickname,
+                    overall_stats: summaryData.overall_stats,
+                    history: historyData.history
+                };
+                displayDetailedHistoryModal(combinedData);
+            } else {
+                showNotification('获取详细历史失败', 'error');
+            }
+        }).catch(error => {
+            console.error('获取详细历史失败:', error);
+            showNotification('获取详细历史失败', 'error');
+        });
+    }
+    
+    function displayDetailedHistoryModal(data) {
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        modal.innerHTML = `
+            <div class="bg-gray-800 rounded-lg p-6 max-w-6xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold text-white">📊 ${data.nickname} 的详细摊牌历史</h3>
+                    <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-white">
+                        <span class="text-2xl">&times;</span>
+                    </button>
+                </div>
+                
+                <!-- 统计摘要 -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-gray-700 rounded p-3 text-center">
+                        <div class="text-2xl font-bold text-yellow-400">${data.overall_stats.total_showdowns}</div>
+                        <div class="text-sm text-gray-300">总摊牌次数</div>
+                    </div>
+                    <div class="bg-gray-700 rounded p-3 text-center">
+                        <div class="text-2xl font-bold text-green-400">${data.overall_stats.win_rate}%</div>
+                        <div class="text-sm text-gray-300">胜率</div>
+                    </div>
+                    <div class="bg-gray-700 rounded p-3 text-center">
+                        <div class="text-2xl font-bold text-blue-400">$${data.overall_stats.total_winnings}</div>
+                        <div class="text-sm text-gray-300">总奖金</div>
+                    </div>
+                    <div class="bg-gray-700 rounded p-3 text-center">
+                        <div class="text-2xl font-bold text-purple-400">$${data.overall_stats.average_winnings}</div>
+                        <div class="text-sm text-gray-300">平均奖金</div>
+                    </div>
+                </div>
+                
+                <!-- 历史记录列表 -->
+                <div class="space-y-3">
+                    ${data.history.map(record => {
+                        const result = record.my_result && record.my_result.result === 'winner' ? '🏆 胜利' : '💔 失败';
+                        const resultColor = record.my_result && record.my_result.result === 'winner' ? 'text-green-400' : 'text-red-400';
+                        const myCards = record.my_result ? record.my_result.hole_cards : [];
+                        const myHand = record.my_result ? record.my_result.hand_description : '';
+                        const myRank = record.my_result ? `#${record.my_result.rank_position}` : '';
+                        const winnings = record.my_result ? record.my_result.winnings : 0;
+                        
+                        return `
+                            <div class="bg-gray-700 rounded p-4">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div class="flex items-center gap-3">
+                                        <span class="${resultColor} font-bold">${result}</span>
+                                        <span class="text-gray-300">排名 #${myRank}</span>
+                                        ${winnings > 0 ? `<span class="bg-yellow-600 text-white px-2 py-1 rounded text-xs">+$${winnings}</span>` : ''}
+                                    </div>
+                                    <span class="text-gray-400 text-sm">
+                                        ${new Date(record.ended_at).toLocaleString()}
+                                    </span>
+                                </div>
+                                
+                                <div class="grid md:grid-cols-2 gap-4">
+                                    <div>
+                                        <div class="text-white font-semibold mb-1">我的手牌:</div>
+                                        <div class="flex gap-1 mb-2">
+                                            ${myCards.map(card => `
+                                                <div class="bg-white rounded px-2 py-1 text-black text-sm font-bold">
+                                                    ${card.rank}${card.suit}
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                        <div class="text-blue-400 font-medium">${myHand}</div>
+                                    </div>
+                                    
+                                    <div>
+                                        <div class="text-white font-semibold mb-1">对手情况:</div>
+                                        <div class="space-y-1 text-sm">
+                                            ${record.opponents.map(opponent => `
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-300">
+                                                        ${opponent.is_bot ? '🤖' : '👤'} ${opponent.nickname}
+                                                    </span>
+                                                    <span class="text-gray-400">
+                                                        #${opponent.rank_position} ${opponent.hand_description}
+                                                    </span>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+    }
+
     function refreshGameState() {
         console.log('🔄 刷新游戏状态...');
         

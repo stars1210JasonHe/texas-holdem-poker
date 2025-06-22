@@ -7,9 +7,10 @@ import random
 from typing import List, Tuple, Dict, Optional
 from enum import Enum
 from .player import Player, PlayerAction, PlayerStatus
-from .card import Card
+from .card import Card, Suit, Rank
 from .hand_evaluator import HandEvaluator, HandRank
 import itertools
+import math
 
 
 class BotLevel(Enum):
@@ -36,6 +37,14 @@ class Bot(Player):
         self.bot_level = level
         self.hand_history = []  # 手牌历史
         self.opponent_patterns = {}  # 对手行为模式
+        self.session_stats = {  # 会话统计
+            'hands_played': 0,
+            'vpip': 0,  # 主动入池率
+            'pfr': 0,   # 翻前加注率
+            'aggression_factor': 1.0,
+            'showdown_wins': 0,
+            'total_showdowns': 0
+        }
     
     def decide_action(self, game_state: Dict) -> Tuple[PlayerAction, int]:
         """
@@ -47,6 +56,9 @@ class Bot(Player):
         Returns:
             Tuple[PlayerAction, int]: (动作类型, 下注金额)
         """
+        # 更新统计数据
+        self.session_stats['hands_played'] += 1
+        
         if self.bot_level == BotLevel.BEGINNER:
             return self._beginner_strategy(game_state)
         elif self.bot_level == BotLevel.INTERMEDIATE:
@@ -56,11 +68,9 @@ class Bot(Player):
     
     def _beginner_strategy(self, game_state: Dict) -> Tuple[PlayerAction, int]:
         """
-        初级机器人策略：50% 跟注，20% 加注（最小），30% 弃牌，无诈唬
+        初级机器人策略：保守型，较少诈唬
         """
-        # 如果没有筹码，机器人成为观察者，不再行动
         if self.chips <= 0:
-            print(f"🤖💸 机器人 {self.nickname} 没有筹码，成为观察者")
             return PlayerAction.FOLD, 0
             
         community_cards = game_state.get('community_cards', [])
@@ -68,204 +78,232 @@ class Bot(Player):
         min_raise = game_state.get('min_raise', current_bet * 2)
         pot_size = game_state.get('pot_size', 0)
         
-        # 评估当前手牌强度
+        # 评估手牌强度
         if len(community_cards) >= 3:
             hand_rank, _ = HandEvaluator.evaluate_hand(self.hole_cards, community_cards)
-            hand_strength = hand_rank.rank_value / 10.0  # 标准化到0-1
+            hand_strength = hand_rank.rank_value / 10.0
         else:
-            # Pre-flop: 简单的底牌评估
             hand_strength = self._evaluate_preflop_hand()
         
-        # 计算需要跟注的金额
         call_amount = current_bet - self.current_bet
         
-        # 如果不需要跟注，可以过牌
+        # 无需跟注的情况
         if call_amount == 0:
-            if random.random() < 0.7:  # 70% 过牌
-                return PlayerAction.CHECK, 0
-            else:  # 30% 下注
+            if hand_strength > 0.7:  # 强牌才下注
                 bet_amount = min(min_raise, self.chips)
                 return PlayerAction.BET, bet_amount
+            else:
+                return PlayerAction.CHECK, 0
         
         # 需要跟注的情况
         if call_amount > self.chips:
-            # 无法跟注，弃牌或全下
-            if hand_strength > 0.6:
+            if hand_strength > 0.8:  # 只有非常强的牌才全下
                 return PlayerAction.ALL_IN, self.chips
             else:
                 return PlayerAction.FOLD, 0
         
-        # 根据手牌强度决定动作
-        if hand_strength < 0.3:
+        # 根据手牌强度决定
+        if hand_strength < 0.4:
             return PlayerAction.FOLD, 0
-        elif hand_strength < 0.6:
-            if random.random() < 0.5:
+        elif hand_strength < 0.7:
+            if random.random() < 0.6:  # 60% 跟注
                 return PlayerAction.CALL, call_amount
             else:
                 return PlayerAction.FOLD, 0
         else:
             # 强牌
-            action_choice = random.random()
-            if action_choice < 0.5:  # 50% 跟注
-                return PlayerAction.CALL, call_amount
-            elif action_choice < 0.7:  # 20% 加注
+            if random.random() < 0.3:  # 30% 加注
                 raise_amount = min(min_raise, self.chips)
                 if raise_amount > call_amount:
                     return PlayerAction.RAISE, raise_amount
                 else:
                     return PlayerAction.CALL, call_amount
-            else:  # 30% 弃牌（有时会弃好牌）
-                return PlayerAction.FOLD, 0
+            else:
+                return PlayerAction.CALL, call_amount
     
     def _intermediate_strategy(self, game_state: Dict) -> Tuple[PlayerAction, int]:
         """
-        中级机器人策略：基于1000次蒙特卡洛评估；EV > 0时加注至2.5 BB
+        中级机器人策略：改进的蒙特卡洛模拟，考虑底池赔率和位置
         """
-        # 如果没有筹码，机器人成为观察者，不再行动
         if self.chips <= 0:
-            print(f"🤖💸 机器人 {self.nickname} 没有筹码，成为观察者")
             return PlayerAction.FOLD, 0
             
         community_cards = game_state.get('community_cards', [])
         current_bet = game_state.get('current_bet', 0)
         big_blind = game_state.get('big_blind', 20)
         pot_size = game_state.get('pot_size', 0)
-        num_opponents = game_state.get('active_players', 2) - 1
+        num_opponents = max(1, game_state.get('active_players', 2) - 1)
+        position = game_state.get('position', 'middle')
         
-        # 计算胜率
-        win_probability = self._monte_carlo_simulation(community_cards, num_opponents, 1000)
+        # 改进的胜率计算
+        if len(community_cards) >= 3:
+            win_probability = self._improved_monte_carlo(community_cards, num_opponents, 2000)
+        else:
+            # Pre-flop 胜率表
+            win_probability = self._preflop_win_rate(num_opponents)
         
-        # 计算期望值
+        # 位置调整
+        position_bonus = {'early': -0.05, 'middle': 0, 'late': 0.08}.get(position, 0)
+        adjusted_win_prob = max(0.05, min(0.95, win_probability + position_bonus))
+        
         call_amount = current_bet - self.current_bet
-        pot_odds = call_amount / (pot_size + call_amount) if (pot_size + call_amount) > 0 else 1
         
-        # 如果不需要跟注
+        # 无需跟注
         if call_amount == 0:
-            if win_probability > 0.6:
-                bet_amount = min(int(2.5 * big_blind), self.chips)
+            if adjusted_win_prob > 0.65:
+                # 价值下注
+                bet_size = self._calculate_bet_size(pot_size, adjusted_win_prob, 'value')
+                bet_amount = min(bet_size, self.chips)
+                return PlayerAction.BET, bet_amount
+            elif adjusted_win_prob > 0.25 and random.random() < 0.15:
+                # 小概率诈唬
+                bluff_size = self._calculate_bet_size(pot_size, adjusted_win_prob, 'bluff')
+                bet_amount = min(bluff_size, self.chips)
                 return PlayerAction.BET, bet_amount
             else:
                 return PlayerAction.CHECK, 0
         
-        # 无法跟注的情况
-        if call_amount > self.chips:
-            if win_probability > 0.4:
+        # 全下场景
+        if call_amount >= self.chips:
+            pot_odds = self.chips / (pot_size + self.chips)
+            if adjusted_win_prob > pot_odds * 1.2:  # 需要较好的胜率
                 return PlayerAction.ALL_IN, self.chips
             else:
                 return PlayerAction.FOLD, 0
         
-        # 根据胜率和底池赔率决定
-        if win_probability > pot_odds + 0.1:  # 有正期望值
-            if win_probability > 0.7:
-                # 强牌，加注
-                raise_amount = min(int(2.5 * big_blind), self.chips)
-                if raise_amount > call_amount:
-                    return PlayerAction.RAISE, raise_amount
+        # 计算底池赔率
+        pot_odds = call_amount / (pot_size + call_amount) if (pot_size + call_amount) > 0 else 1
+        
+        # 决策逻辑
+        if adjusted_win_prob > pot_odds + 0.1:
+            if adjusted_win_prob > 0.75:
+                # 强牌大幅加注
+                raise_size = self._calculate_bet_size(pot_size + call_amount, adjusted_win_prob, 'value')
+                total_bet = call_amount + raise_size
+                if total_bet <= self.chips:
+                    return PlayerAction.RAISE, total_bet
                 else:
                     return PlayerAction.CALL, call_amount
-            else:
-                # 中等牌，跟注
+            elif adjusted_win_prob > 0.55:
+                # 中等牌小幅加注或跟注
+                if random.random() < 0.4:
+                    raise_size = min(int(1.5 * big_blind), self.chips - call_amount)
+                    if raise_size > 0:
+                        return PlayerAction.RAISE, call_amount + raise_size
                 return PlayerAction.CALL, call_amount
+            else:
+                return PlayerAction.CALL, call_amount
+        elif adjusted_win_prob > pot_odds - 0.05:
+            # 边际决策
+            if random.random() < 0.3:
+                return PlayerAction.CALL, call_amount
+            else:
+                return PlayerAction.FOLD, 0
         else:
-            # 负期望值，弃牌
             return PlayerAction.FOLD, 0
     
     def _advanced_strategy(self, game_state: Dict) -> Tuple[PlayerAction, int]:
         """
-        高级机器人策略：考虑位置、对手下注模式、诈唬
+        高级机器人策略：GTO近似策略，对手建模，动态调整
         """
-        # 如果没有筹码，机器人成为观察者，不再行动
         if self.chips <= 0:
-            print(f"🤖💸 机器人 {self.nickname} 没有筹码，成为观察者")
             return PlayerAction.FOLD, 0
             
         community_cards = game_state.get('community_cards', [])
         current_bet = game_state.get('current_bet', 0)
         big_blind = game_state.get('big_blind', 20)
         pot_size = game_state.get('pot_size', 0)
-        num_opponents = game_state.get('active_players', 2) - 1
-        position = game_state.get('position', 'middle')  # early, middle, late
-        betting_round = len(community_cards)  # 0=preflop, 3=flop, 4=turn, 5=river
+        num_opponents = max(1, game_state.get('active_players', 2) - 1)
+        position = game_state.get('position', 'middle')
+        betting_round = len(community_cards)
+        stack_to_pot_ratio = self.chips / max(pot_size, big_blind)
         
-        # 计算基本胜率
-        win_probability = self._monte_carlo_simulation(community_cards, num_opponents, 2000)
+        # 高级胜率计算
+        if len(community_cards) >= 3:
+            win_probability = self._advanced_monte_carlo(community_cards, num_opponents, 3000)
+            hand_equity = self._calculate_hand_equity(community_cards)
+        else:
+            win_probability = self._advanced_preflop_strategy(num_opponents, position)
+            hand_equity = win_probability
         
-        # 位置调整
-        position_modifier = {
-            'early': -0.1,
-            'middle': 0,
-            'late': 0.1
-        }.get(position, 0)
+        # 对手建模调整
+        opponent_adjustment = self._analyze_opponents(game_state)
+        adjusted_win_prob = max(0.05, min(0.95, win_probability + opponent_adjustment))
         
-        adjusted_win_prob = max(0, min(1, win_probability + position_modifier))
-        
-        # 诈唬概率
-        bluff_probability = 0.05 + (0.1 if position == 'late' else 0)
+        # 位置和筹码深度调整
+        position_factor = {'early': 0.85, 'middle': 1.0, 'late': 1.15}.get(position, 1.0)
+        stack_factor = min(1.2, max(0.8, math.log(stack_to_pot_ratio + 1) / 2))
         
         call_amount = current_bet - self.current_bet
         
-        # 诈唬决策
-        should_bluff = (random.random() < bluff_probability and 
-                       adjusted_win_prob < 0.3 and 
+        # 诈唬频率计算 (基于GTO理论)
+        bluff_frequency = self._calculate_optimal_bluff_frequency(pot_size, call_amount, position)
+        should_bluff = (random.random() < bluff_frequency and 
+                       adjusted_win_prob < 0.35 and 
                        betting_round >= 3)
         
+        # 无需跟注的情况
         if call_amount == 0:
-            # 没有下注压力
             if should_bluff:
-                bluff_size = min(int(1.5 * big_blind), self.chips)
-                return PlayerAction.BET, bluff_size
-            elif adjusted_win_prob > 0.6:
-                value_bet = min(int(2 * big_blind), self.chips)
-                return PlayerAction.BET, value_bet
+                bluff_size = self._calculate_optimal_bet_size(pot_size, 'bluff', position)
+                return PlayerAction.BET, min(bluff_size, self.chips)
+            elif adjusted_win_prob * position_factor > 0.6:
+                value_size = self._calculate_optimal_bet_size(pot_size, 'value', position)
+                return PlayerAction.BET, min(value_size, self.chips)
+            elif adjusted_win_prob > 0.3 and random.random() < 0.2:
+                # 小频率的阻挡下注
+                blocking_bet = min(int(0.3 * pot_size), self.chips)
+                return PlayerAction.BET, blocking_bet
             else:
                 return PlayerAction.CHECK, 0
         
-        # 需要跟注的情况
-        if call_amount > self.chips:
-            if adjusted_win_prob > 0.45 or should_bluff:
+        # 全下场景
+        if call_amount >= self.chips:
+            # 考虑隐含赔率
+            implied_odds = self._calculate_implied_odds(game_state)
+            effective_win_prob = adjusted_win_prob + implied_odds
+            pot_odds = self.chips / (pot_size + self.chips)
+            
+            if effective_win_prob > pot_odds * 1.1 or should_bluff:
                 return PlayerAction.ALL_IN, self.chips
             else:
                 return PlayerAction.FOLD, 0
         
-        # 动态调整策略
+        # 正常下注场景
         pot_odds = call_amount / (pot_size + call_amount) if (pot_size + call_amount) > 0 else 1
         
         if should_bluff:
-            # 诈唬
-            if random.random() < 0.7:  # 70% 加注诈唬
-                bluff_raise = min(int(2.5 * big_blind), self.chips)
-                if bluff_raise > call_amount:
-                    return PlayerAction.RAISE, bluff_raise
-                else:
-                    return PlayerAction.CALL, call_amount
-            else:  # 30% 跟注诈唬
-                return PlayerAction.CALL, call_amount
+            # 诈唬策略
+            if random.random() < 0.6:  # 60% 加注诈唬
+                bluff_raise = self._calculate_optimal_bet_size(pot_size + call_amount, 'bluff', position)
+                total_bet = call_amount + bluff_raise
+                if total_bet <= self.chips:
+                    return PlayerAction.RAISE, total_bet
+            return PlayerAction.CALL, call_amount
         
-        # 正常决策
-        if adjusted_win_prob > pot_odds + 0.15:
-            # 强牌
+        # 价值策略
+        if adjusted_win_prob * position_factor * stack_factor > pot_odds + 0.15:
             if adjusted_win_prob > 0.8:
-                # 非常强的牌，大幅加注
-                big_raise = min(int(3 * big_blind), self.chips)
-                if big_raise > call_amount:
-                    return PlayerAction.RAISE, big_raise
+                # 坚果牌，大幅加注
+                value_raise = self._calculate_optimal_bet_size(pot_size + call_amount, 'nuts', position)
+                total_bet = call_amount + value_raise
+                if total_bet <= self.chips:
+                    return PlayerAction.RAISE, total_bet
                 else:
                     return PlayerAction.CALL, call_amount
             elif adjusted_win_prob > 0.65:
                 # 强牌，中等加注
-                medium_raise = min(int(2 * big_blind), self.chips)
-                if medium_raise > call_amount:
-                    return PlayerAction.RAISE, medium_raise
+                medium_raise = min(int(2 * big_blind), self.chips - call_amount)
+                if medium_raise > big_blind // 2:
+                    return PlayerAction.RAISE, call_amount + medium_raise
                 else:
                     return PlayerAction.CALL, call_amount
             else:
-                # 中等强度，跟注
                 return PlayerAction.CALL, call_amount
-        elif adjusted_win_prob > pot_odds:
-            # 边际牌，跟注
+        elif adjusted_win_prob > pot_odds * 0.9:
+            # 边际跟注
             return PlayerAction.CALL, call_amount
         else:
-            # 弱牌，弃牌
             return PlayerAction.FOLD, 0
     
     def _evaluate_preflop_hand(self) -> float:
@@ -282,31 +320,41 @@ class Bot(Player):
         rank1, rank2 = card1.rank.numeric_value, card2.rank.numeric_value
         suited = card1.suit == card2.suit
         
-        # 对子
+        # 对子评估
         if rank1 == rank2:
-            if rank1 >= 10:  # TT, JJ, QQ, KK, AA
-                return 0.8 + (rank1 - 10) * 0.04
+            if rank1 >= 13:  # KK, AA
+                return 0.85 + (rank1 - 13) * 0.05
+            elif rank1 >= 10:  # TT, JJ, QQ
+                return 0.7 + (rank1 - 10) * 0.05
             elif rank1 >= 7:  # 77, 88, 99
-                return 0.6 + (rank1 - 7) * 0.05
+                return 0.5 + (rank1 - 7) * 0.05
             else:  # 22-66
-                return 0.3 + (rank1 - 2) * 0.05
+                return 0.25 + (rank1 - 2) * 0.05
         
-        # 非对子
+        # 非对子评估
         high_rank = max(rank1, rank2)
         low_rank = min(rank1, rank2)
         gap = high_rank - low_rank
         
         base_strength = 0.0
         
-        # 高牌加分
+        # 高牌价值
         if high_rank == 14:  # A
-            base_strength += 0.3
-        elif high_rank >= 11:  # K, Q
-            base_strength += 0.2
-        elif high_rank >= 9:  # J, T
-            base_strength += 0.1
+            base_strength += 0.35
+            if low_rank >= 10:  # AK, AQ, AJ, AT
+                base_strength += 0.25
+            elif low_rank >= 7:  # A9-A7
+                base_strength += 0.15
+        elif high_rank >= 12:  # K, Q
+            base_strength += 0.25
+            if low_rank >= 9:
+                base_strength += 0.15
+        elif high_rank >= 10:  # J, T
+            base_strength += 0.15
+            if low_rank >= 8:
+                base_strength += 0.1
         
-        # 连牌加分
+        # 连牌奖励
         if gap == 1:  # 连牌
             base_strength += 0.15
         elif gap == 2:  # 一个空档
@@ -314,68 +362,256 @@ class Bot(Player):
         elif gap == 3:  # 两个空档
             base_strength += 0.05
         
-        # 同花加分
+        # 同花奖励
         if suited:
-            base_strength += 0.1
+            base_strength += 0.12
+            if gap <= 3:  # 同花连牌
+                base_strength += 0.08
         
-        # 特殊组合
-        if (high_rank, low_rank) in [(14, 13), (14, 12), (14, 11)]:  # AK, AQ, AJ
-            base_strength += 0.2
-        
-        return min(0.95, base_strength)
+        return min(0.92, base_strength)
     
-    def _monte_carlo_simulation(self, community_cards: List[Card], 
-                               num_opponents: int, simulations: int = 1000) -> float:
-        """
-        蒙特卡洛模拟计算胜率
+    def _preflop_win_rate(self, num_opponents: int) -> float:
+        """基于手牌和对手数量的预计算胜率表"""
+        hand_strength = self._evaluate_preflop_hand()
         
-        Args:
-            community_cards: 公共牌
-            num_opponents: 对手数量
-            simulations: 模拟次数
-            
-        Returns:
-            float: 胜率 (0-1)
-        """
+        # 根据对手数量调整胜率
+        opponent_factor = max(0.7, 1.0 - (num_opponents - 1) * 0.1)
+        
+        return hand_strength * opponent_factor
+    
+    def _improved_monte_carlo(self, community_cards: List[Card], num_opponents: int, simulations: int = 2000) -> float:
+        """改进的蒙特卡洛模拟"""
         if len(self.hole_cards) != 2:
             return 0.0
         
         wins = 0
         ties = 0
         
-        # 已知牌
+        # 创建完整牌组
+        all_cards = []
+        for suit in [Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS, Suit.SPADES]:
+            for rank in [Rank.TWO, Rank.THREE, Rank.FOUR, Rank.FIVE, Rank.SIX, 
+                        Rank.SEVEN, Rank.EIGHT, Rank.NINE, Rank.TEN, 
+                        Rank.JACK, Rank.QUEEN, Rank.KING, Rank.ACE]:
+                all_cards.append(Card(suit, rank))
+        
+        # 移除已知牌
         known_cards = set(self.hole_cards + community_cards)
+        available_cards = [card for card in all_cards if card not in known_cards]
         
         for _ in range(simulations):
-            # 创建剩余牌组
-            remaining_cards = []
-            for suit in [card.suit for card in known_cards]:
-                pass  # 这里应该创建完整的牌组，为了简化先跳过
+            # 随机洗牌
+            simulation_deck = available_cards.copy()
+            random.shuffle(simulation_deck)
             
-            # 简化版本：随机评估
-            our_hand = HandEvaluator.evaluate_hand(self.hole_cards, community_cards)
+            # 完成公共牌
+            sim_community = community_cards.copy()
+            cards_needed = 5 - len(community_cards)
+            if cards_needed > 0:
+                sim_community.extend(simulation_deck[:cards_needed])
+                deck_pos = cards_needed
+            else:
+                deck_pos = 0
             
-            # 模拟对手手牌（简化版本）
-            opponent_stronger = 0
-            opponent_same = 0
+            # 计算我们的手牌强度
+            our_hand_rank, _ = HandEvaluator.evaluate_hand(self.hole_cards, sim_community)
+            
+            # 模拟对手手牌
+            better_opponents = 0
+            equal_opponents = 0
             
             for _ in range(num_opponents):
-                # 随机生成对手牌力（简化）
-                opponent_strength = random.random()
-                our_strength = our_hand[0].rank_value / 10.0
+                if deck_pos + 2 > len(simulation_deck):
+                    break
+                    
+                opponent_cards = simulation_deck[deck_pos:deck_pos + 2]
+                deck_pos += 2
                 
-                if opponent_strength > our_strength:
-                    opponent_stronger += 1
-                elif abs(opponent_strength - our_strength) < 0.01:
-                    opponent_same += 1
+                opponent_hand_rank, _ = HandEvaluator.evaluate_hand(opponent_cards, sim_community)
+                
+                if opponent_hand_rank.rank_value > our_hand_rank.rank_value:
+                    better_opponents += 1
+                elif opponent_hand_rank.rank_value == our_hand_rank.rank_value:
+                    equal_opponents += 1
             
-            if opponent_stronger == 0:
-                if opponent_same == 0:
+            if better_opponents == 0:
+                if equal_opponents == 0:
                     wins += 1
                 else:
                     ties += 1
         
         return (wins + ties * 0.5) / simulations if simulations > 0 else 0.0
+    
+    def _advanced_monte_carlo(self, community_cards: List[Card], num_opponents: int, simulations: int = 3000) -> float:
+        """高级蒙特卡洛模拟，考虑对手范围"""
+        base_win_rate = self._improved_monte_carlo(community_cards, num_opponents, simulations)
+        
+        # 根据对手紧松度调整
+        avg_tightness = sum(pattern.get('tightness', 0.5) for pattern in self.opponent_patterns.values())
+        avg_tightness = avg_tightness / len(self.opponent_patterns) if self.opponent_patterns else 0.5
+        
+        # 紧的对手通常有更强的范围
+        tightness_adjustment = (avg_tightness - 0.5) * 0.1
+        
+        return max(0.05, min(0.95, base_win_rate - tightness_adjustment))
+    
+    def _advanced_preflop_strategy(self, num_opponents: int, position: str) -> float:
+        """高级翻前策略"""
+        base_strength = self._evaluate_preflop_hand()
+        
+        # 位置调整
+        position_bonus = {'early': -0.1, 'middle': 0, 'late': 0.15}.get(position, 0)
+        
+        # 对手数量调整
+        opponent_penalty = (num_opponents - 1) * 0.08
+        
+        # 根据会话统计调整
+        if self.session_stats['hands_played'] > 10:
+            # 如果我们一直在输，变得更保守
+            if self.session_stats.get('showdown_wins', 0) < self.session_stats.get('total_showdowns', 1) * 0.3:
+                base_strength *= 0.9
+        
+        adjusted_strength = base_strength + position_bonus - opponent_penalty
+        return max(0.05, min(0.95, adjusted_strength))
+    
+    def _calculate_bet_size(self, pot_size: int, win_prob: float, bet_type: str) -> int:
+        """计算最优下注大小"""
+        if bet_type == 'value':
+            # 价值下注：根据胜率调整大小
+            if win_prob > 0.8:
+                return int(pot_size * 0.8)  # 强牌大注
+            elif win_prob > 0.65:
+                return int(pot_size * 0.6)  # 中等牌中注
+            else:
+                return int(pot_size * 0.4)  # 弱牌小注
+        elif bet_type == 'bluff':
+            # 诈唬下注：通常较大
+            return int(pot_size * 0.7)
+        else:
+            return int(pot_size * 0.5)
+    
+    def _calculate_optimal_bet_size(self, pot_size: int, bet_type: str, position: str) -> int:
+        """计算最优下注大小（高级版本）"""
+        base_multiplier = {
+            'value': 0.6,
+            'bluff': 0.7,
+            'nuts': 0.85,
+            'blocking': 0.3
+        }.get(bet_type, 0.5)
+        
+        # 位置调整
+        position_multiplier = {'early': 0.9, 'middle': 1.0, 'late': 1.1}.get(position, 1.0)
+        
+        return max(10, int(pot_size * base_multiplier * position_multiplier))
+    
+    def _calculate_optimal_bluff_frequency(self, pot_size: int, bet_amount: int, position: str) -> float:
+        """基于GTO理论计算最优诈唬频率"""
+        if pot_size == 0:
+            return 0.05
+        
+        # 基本GTO公式：诈唬频率 = 下注额 / (底池 + 下注额)
+        base_frequency = bet_amount / (pot_size + bet_amount) if (pot_size + bet_amount) > 0 else 0.1
+        
+        # 位置调整
+        position_bonus = {'early': -0.02, 'middle': 0, 'late': 0.03}.get(position, 0)
+        
+        return max(0.02, min(0.25, base_frequency + position_bonus))
+    
+    def _calculate_hand_equity(self, community_cards: List[Card]) -> float:
+        """计算手牌权益"""
+        if len(community_cards) < 3:
+            return self._evaluate_preflop_hand()
+        
+        hand_rank, _ = HandEvaluator.evaluate_hand(self.hole_cards, community_cards)
+        base_equity = hand_rank.rank_value / 10.0
+        
+        # 考虑听牌可能性
+        if len(community_cards) < 5:
+            draw_potential = self._calculate_draw_potential(community_cards)
+            base_equity += draw_potential * 0.1
+        
+        return min(0.95, base_equity)
+    
+    def _calculate_draw_potential(self, community_cards: List[Card]) -> float:
+        """计算听牌潜力"""
+        potential = 0.0
+        
+        all_cards = self.hole_cards + community_cards
+        
+        # 检查同花听牌
+        suit_counts = {}
+        for card in all_cards:
+            suit_counts[card.suit] = suit_counts.get(card.suit, 0) + 1
+        
+        max_suit_count = max(suit_counts.values()) if suit_counts else 0
+        if max_suit_count == 4:  # 同花听牌
+            potential += 0.4
+        elif max_suit_count == 3:  # 可能的同花听牌
+            potential += 0.1
+        
+        # 检查顺子听牌（简化版本）
+        ranks = sorted([card.rank.numeric_value for card in all_cards])
+        consecutive_count = 1
+        max_consecutive = 1
+        
+        for i in range(1, len(ranks)):
+            if ranks[i] == ranks[i-1] + 1:
+                consecutive_count += 1
+                max_consecutive = max(max_consecutive, consecutive_count)
+            else:
+                consecutive_count = 1
+        
+        if max_consecutive == 4:  # 顺子听牌
+            potential += 0.3
+        elif max_consecutive == 3:  # 可能的顺子听牌
+            potential += 0.1
+        
+        return min(0.5, potential)
+    
+    def _analyze_opponents(self, game_state: Dict) -> float:
+        """分析对手并调整策略"""
+        if not self.opponent_patterns:
+            return 0.0
+        
+        adjustment = 0.0
+        
+        # 分析平均对手紧松度
+        avg_tightness = sum(p.get('tightness', 0.5) for p in self.opponent_patterns.values())
+        avg_tightness = avg_tightness / len(self.opponent_patterns)
+        
+        # 对紧的对手更保守
+        if avg_tightness > 0.7:
+            adjustment -= 0.08
+        elif avg_tightness < 0.3:
+            adjustment += 0.05
+        
+        # 分析平均攻击性
+        avg_aggression = sum(p.get('aggression', 0.5) for p in self.opponent_patterns.values())
+        avg_aggression = avg_aggression / len(self.opponent_patterns)
+        
+        # 对激进的对手更小心
+        if avg_aggression > 0.7:
+            adjustment -= 0.05
+        
+        return adjustment
+    
+    def _calculate_implied_odds(self, game_state: Dict) -> float:
+        """计算隐含赔率"""
+        pot_size = game_state.get('pot_size', 0)
+        
+        # 估算对手剩余筹码
+        opponent_stack_estimate = 0
+        for pattern in self.opponent_patterns.values():
+            # 这里可以根据对手历史行为估算其筹码量
+            opponent_stack_estimate += 500  # 简化估算
+        
+        if pot_size == 0:
+            return 0.0
+        
+        # 隐含赔率 = 潜在收益 / 当前底池
+        implied_ratio = min(0.3, opponent_stack_estimate / (pot_size * 10))
+        
+        return implied_ratio
     
     def update_opponent_pattern(self, player_id: str, action: PlayerAction, amount: int, context: Dict):
         """

@@ -2,6 +2,59 @@
 
 {% block title %}德州扑克游戏 - 大厅{% endblock %}
 
+{% block head %}
+<style>
+/* 移动端优化样式 */
+@media (max-width: 640px) {
+    /* 确保模态框在移动端正确显示 */
+    #createTableModal {
+        padding: 1rem !important;
+    }
+    
+    /* 防止iOS Safari的bouncing效果 */
+    body.modal-open {
+        position: fixed;
+        width: 100%;
+        overflow: hidden;
+    }
+    
+    /* 优化触摸目标大小 */
+    button, input[type="radio"] + div {
+        min-height: 44px;
+    }
+    
+    /* 改善输入框的可用性 */
+    input, select {
+        font-size: 16px; /* 防止iOS Safari自动缩放 */
+    }
+}
+
+/* 平滑滚动 */
+.modal-content {
+    scroll-behavior: smooth;
+}
+
+/* 自定义滚动条 */
+.overflow-y-auto::-webkit-scrollbar {
+    width: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+    background: rgba(75, 85, 99, 0.3);
+    border-radius: 2px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+    background: rgba(156, 163, 175, 0.5);
+    border-radius: 2px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background: rgba(156, 163, 175, 0.7);
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="min-h-screen bg-gray-900 py-8">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -62,14 +115,15 @@
 </div>
 
 <!-- 创建房间模态框 -->
-<div id="createTableModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
-    <div class="bg-gray-800 rounded-xl p-8 max-w-md w-full mx-4 border border-gray-700">
-        <div class="flex justify-between items-center mb-6">
-            <h3 class="text-xl font-semibold text-white">🆕 创建新房间</h3>
+<div id="createTableModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 overflow-y-auto">
+    <div class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-xl p-4 sm:p-6 max-w-md w-full border border-gray-700 max-h-[90vh] overflow-y-auto relative">
+        <div class="flex justify-between items-center mb-4 sm:mb-6">
+            <h3 class="text-lg sm:text-xl font-semibold text-white">🆕 创建新房间</h3>
             <button id="closeModalBtn" class="text-gray-400 hover:text-white text-2xl">&times;</button>
         </div>
 
-        <form id="createTableForm" class="space-y-4">
+        <form id="createTableForm" class="space-y-3 sm:space-y-4">
             <div>
                 <label class="block text-sm font-medium text-gray-300 mb-2">房间名称</label>
                 <input 
@@ -83,7 +137,29 @@
                 >
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
+            <!-- 游戏模式选择 -->
+            <div class="mb-3 sm:mb-4">
+                <label class="block text-sm font-medium text-gray-300 mb-2">游戏模式</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <label class="cursor-pointer">
+                        <input type="radio" name="gameMode" value="blinds" checked class="sr-only peer">
+                        <div class="bg-gray-700 border-2 border-gray-600 rounded-lg p-2 sm:p-3 peer-checked:border-blue-500 peer-checked:bg-blue-900/30 hover:border-gray-500 transition-colors">
+                            <div class="text-white font-medium text-sm sm:text-base">🎯 大小盲注</div>
+                            <div class="text-gray-400 text-xs">传统模式</div>
+                        </div>
+                    </label>
+                    <label class="cursor-pointer">
+                        <input type="radio" name="gameMode" value="ante" class="sr-only peer">
+                        <div class="bg-gray-700 border-2 border-gray-600 rounded-lg p-2 sm:p-3 peer-checked:border-green-500 peer-checked:bg-green-900/30 hover:border-gray-500 transition-colors">
+                            <div class="text-white font-medium text-sm sm:text-base">⚖️ 按比例下注</div>
+                            <div class="text-gray-400 text-xs">所有人平等</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 大小盲注设置（传统模式） -->
+            <div id="blindsSettings" class="grid grid-cols-2 gap-4 mb-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-300 mb-2">小盲注</label>
                     <input 
@@ -109,6 +185,27 @@
                         class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 text-white"
                         required
                     >
+                </div>
+            </div>
+
+            <!-- 按比例下注设置（新模式） -->
+            <div id="anteSettings" class="hidden mb-4">
+                <label class="block text-sm font-medium text-gray-300 mb-2">下注比例</label>
+                <div class="flex items-center space-x-2">
+                    <input 
+                        type="range" 
+                        id="antePercentage" 
+                        name="antePercentage"
+                        min="0.5"
+                        max="10"
+                        step="0.5"
+                        value="2"
+                        class="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+                    >
+                    <span id="antePercentageValue" class="text-white font-mono min-w-[4rem] text-center">2.0%</span>
+                </div>
+                <div class="text-gray-400 text-xs mt-1">
+                    每位玩家在每手牌开始时下注初始筹码的这个百分比
                 </div>
             </div>
 
@@ -145,61 +242,62 @@
             </div>
 
             <div>
-                <label class="block text-sm font-medium text-gray-300 mb-3">🤖 添加机器人</label>
-                <div class="space-y-3">
-                    <div class="flex items-center justify-between bg-gray-700 rounded-lg p-3">
-                        <div>
-                            <span class="text-white font-medium">初级机器人</span>
-                            <div class="text-xs text-gray-400">随机策略，适合新手练习</div>
+                <label class="block text-sm font-medium text-gray-300 mb-2 sm:mb-3">🤖 添加机器人</label>
+                <div class="space-y-2 sm:space-y-3">
+                    <div class="flex items-center justify-between bg-gray-700 rounded-lg p-2 sm:p-3">
+                        <div class="flex-1 min-w-0">
+                            <span class="text-white font-medium text-sm sm:text-base">初级机器人</span>
+                            <div class="text-xs text-gray-400 hidden sm:block">随机策略，适合新手练习</div>
                         </div>
-                        <div class="flex items-center space-x-2">
-                            <button type="button" class="bot-decrease bg-gray-600 hover:bg-gray-500 text-white w-8 h-8 rounded-full" data-level="beginner">-</button>
-                            <span class="bot-count text-white font-mono w-8 text-center" data-level="beginner">0</span>
-                            <button type="button" class="bot-increase bg-blue-600 hover:bg-blue-500 text-white w-8 h-8 rounded-full" data-level="beginner">+</button>
-                        </div>
-                    </div>
-                    <div class="flex items-center justify-between bg-gray-700 rounded-lg p-3">
-                        <div>
-                            <span class="text-white font-medium">中级机器人</span>
-                            <div class="text-xs text-gray-400">蒙特卡洛策略，有一定技巧</div>
-                        </div>
-                        <div class="flex items-center space-x-2">
-                            <button type="button" class="bot-decrease bg-gray-600 hover:bg-gray-500 text-white w-8 h-8 rounded-full" data-level="intermediate">-</button>
-                            <span class="bot-count text-white font-mono w-8 text-center" data-level="intermediate">0</span>
-                            <button type="button" class="bot-increase bg-blue-600 hover:bg-blue-500 text-white w-8 h-8 rounded-full" data-level="intermediate">+</button>
+                        <div class="flex items-center space-x-1 sm:space-x-2">
+                            <button type="button" class="bot-decrease bg-gray-600 hover:bg-gray-500 text-white w-7 h-7 sm:w-8 sm:h-8 rounded-full text-sm" data-level="beginner">-</button>
+                            <span class="bot-count text-white font-mono w-6 sm:w-8 text-center text-sm" data-level="beginner">0</span>
+                            <button type="button" class="bot-increase bg-blue-600 hover:bg-blue-500 text-white w-7 h-7 sm:w-8 sm:h-8 rounded-full text-sm" data-level="beginner">+</button>
                         </div>
                     </div>
-                    <div class="flex items-center justify-between bg-gray-700 rounded-lg p-3">
-                        <div>
-                            <span class="text-white font-medium">高级机器人</span>
-                            <div class="text-xs text-gray-400">复杂策略，会诈唬和分析</div>
+                    <div class="flex items-center justify-between bg-gray-700 rounded-lg p-2 sm:p-3">
+                        <div class="flex-1 min-w-0">
+                            <span class="text-white font-medium text-sm sm:text-base">中级机器人</span>
+                            <div class="text-xs text-gray-400 hidden sm:block">蒙特卡洛策略，有一定技巧</div>
                         </div>
-                        <div class="flex items-center space-x-2">
-                            <button type="button" class="bot-decrease bg-gray-600 hover:bg-gray-500 text-white w-8 h-8 rounded-full" data-level="advanced">-</button>
-                            <span class="bot-count text-white font-mono w-8 text-center" data-level="advanced">0</span>
-                            <button type="button" class="bot-increase bg-blue-600 hover:bg-blue-500 text-white w-8 h-8 rounded-full" data-level="advanced">+</button>
+                        <div class="flex items-center space-x-1 sm:space-x-2">
+                            <button type="button" class="bot-decrease bg-gray-600 hover:bg-gray-500 text-white w-7 h-7 sm:w-8 sm:h-8 rounded-full text-sm" data-level="intermediate">-</button>
+                            <span class="bot-count text-white font-mono w-6 sm:w-8 text-center text-sm" data-level="intermediate">0</span>
+                            <button type="button" class="bot-increase bg-blue-600 hover:bg-blue-500 text-white w-7 h-7 sm:w-8 sm:h-8 rounded-full text-sm" data-level="intermediate">+</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between bg-gray-700 rounded-lg p-2 sm:p-3">
+                        <div class="flex-1 min-w-0">
+                            <span class="text-white font-medium text-sm sm:text-base">高级机器人</span>
+                            <div class="text-xs text-gray-400 hidden sm:block">复杂策略，会诈唬和分析</div>
+                        </div>
+                        <div class="flex items-center space-x-1 sm:space-x-2">
+                            <button type="button" class="bot-decrease bg-gray-600 hover:bg-gray-500 text-white w-7 h-7 sm:w-8 sm:h-8 rounded-full text-sm" data-level="advanced">-</button>
+                            <span class="bot-count text-white font-mono w-6 sm:w-8 text-center text-sm" data-level="advanced">0</span>
+                            <button type="button" class="bot-increase bg-blue-600 hover:bg-blue-500 text-white w-7 h-7 sm:w-8 sm:h-8 rounded-full text-sm" data-level="advanced">+</button>
                         </div>
                     </div>
                 </div>
                 <input type="hidden" id="botConfig" name="botConfig" value="{}">
             </div>
 
-            <div class="flex space-x-4 pt-4">
+            <div class="flex space-x-3 sm:space-x-4 pt-3 sm:pt-4 border-t border-gray-700 mt-4">
                 <button 
                     type="button" 
                     id="cancelCreateBtn"
-                    class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200"
+                    class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 sm:py-3 px-3 sm:px-4 rounded-lg transition duration-200 text-sm sm:text-base"
                 >
                     取消
                 </button>
                 <button 
                     type="submit"
-                    class="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200"
+                    class="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 sm:py-3 px-3 sm:px-4 rounded-lg transition duration-200 text-sm sm:text-base"
                 >
                     创建房间
                 </button>
             </div>
         </form>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -289,6 +387,30 @@
             }
         });
 
+        // 游戏模式切换
+        document.querySelectorAll('input[name="gameMode"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                const blindsSettings = document.getElementById('blindsSettings');
+                const anteSettings = document.getElementById('anteSettings');
+                
+                if (this.value === 'blinds') {
+                    blindsSettings.classList.remove('hidden');
+                    anteSettings.classList.add('hidden');
+                } else if (this.value === 'ante') {
+                    blindsSettings.classList.add('hidden');
+                    anteSettings.classList.remove('hidden');
+                }
+            });
+        });
+
+        // 按比例下注滑块控制
+        const anteSlider = document.getElementById('antePercentage');
+        const anteValue = document.getElementById('antePercentageValue');
+        
+        anteSlider.addEventListener('input', function() {
+            anteValue.textContent = parseFloat(this.value).toFixed(1) + '%';
+        });
+
         // 机器人数量控制
         document.querySelectorAll('.bot-increase').forEach(btn => {
             btn.addEventListener('click', function() {
@@ -376,13 +498,31 @@
     // 打开创建房间模态框
     function openCreateTableModal() {
         document.getElementById('createTableModal').classList.remove('hidden');
-        document.getElementById('tableTitle').focus();
+        
+        // 移动端优化：防止背景滚动
+        if (window.innerWidth <= 640) {
+            document.body.classList.add('modal-open');
+            document.body.style.top = `-${window.scrollY}px`;
+        }
+        
+        // 延迟聚焦，确保模态框完全显示
+        setTimeout(() => {
+            document.getElementById('tableTitle').focus();
+        }, 100);
     }
 
     // 关闭创建房间模态框
     function closeCreateTableModal() {
         document.getElementById('createTableModal').classList.add('hidden');
         document.getElementById('createTableForm').reset();
+        
+        // 移动端优化：恢复背景滚动
+        if (window.innerWidth <= 640) {
+            document.body.classList.remove('modal-open');
+            const scrollY = document.body.style.top;
+            document.body.style.top = '';
+            window.scrollTo(0, parseInt(scrollY || '0') * -1);
+        }
     }
 
     // 处理创建房间
@@ -391,19 +531,27 @@
         
         const formData = new FormData(e.target);
         const botConfig = JSON.parse(formData.get('botConfig') || '{}');
+        const gameMode = formData.get('gameMode') || 'blinds';
         
         const tableData = {
             title: formData.get('title').trim() || '新房间',
-            small_blind: parseInt(formData.get('smallBlind')),
-            big_blind: parseInt(formData.get('bigBlind')),
+            small_blind: parseInt(formData.get('smallBlind')) || 10,
+            big_blind: parseInt(formData.get('bigBlind')) || 20,
             max_players: parseInt(formData.get('maxPlayers')),
             initial_chips: parseInt(formData.get('initialChips')),
+            game_mode: gameMode,
+            ante_percentage: parseFloat(formData.get('antePercentage')) / 100 || 0.02,
             bots: botConfig
         };
 
         // 验证数据
-        if (tableData.small_blind >= tableData.big_blind) {
+        if (gameMode === 'blinds' && tableData.small_blind >= tableData.big_blind) {
             showNotification('大盲注必须大于小盲注', 'warning');
+            return;
+        }
+
+        if (gameMode === 'ante' && (tableData.ante_percentage < 0.005 || tableData.ante_percentage > 0.1)) {
+            showNotification('按比例下注必须在0.5%到10%之间', 'warning');
             return;
         }
 
@@ -501,8 +649,12 @@
                 
                 <div class="grid grid-cols-2 gap-4 text-sm text-gray-300 mb-4">
                     <div>
-                        <span class="text-gray-500">盲注:</span>
-                        <span class="text-white">$${table.small_blind}/$${table.big_blind}</span>
+                        <span class="text-gray-500">${table.game_mode === 'ante' ? '模式:' : '盲注:'}</span>
+                        <span class="text-white">
+                            ${table.game_mode === 'ante' 
+                                ? `⚖️ 按比例(${(table.ante_percentage * 100).toFixed(1)}%)` 
+                                : `🎯 $${table.small_blind}/$${table.big_blind}`}
+                        </span>
                     </div>
                     <div>
                         <span class="text-gray-500">玩家:</span>

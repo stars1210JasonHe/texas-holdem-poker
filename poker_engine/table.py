@@ -29,13 +29,18 @@ class Table:
     """牌桌类"""
     
     def __init__(self, table_id: str, title: str, small_blind: int = 10, 
-                 big_blind: int = 20, max_players: int = 9, initial_chips: int = 1000):
+                 big_blind: int = 20, max_players: int = 9, initial_chips: int = 1000,
+                 game_mode: str = "blinds", ante_percentage: float = 0.02):
         self.id = table_id
         self.title = title
         self.small_blind = small_blind
         self.big_blind = big_blind
         self.max_players = max_players
         self.initial_chips = initial_chips
+        
+        # 新增游戏模式参数
+        self.game_mode = game_mode  # "blinds" 或 "ante"
+        self.ante_percentage = ante_percentage  # 按比例下注的百分比 (例如 0.02 = 2%)
         
         self.players: List[Player] = []
         self.seats: Dict[int, Optional[Player]] = {i: None for i in range(max_players)}
@@ -46,7 +51,7 @@ class Table:
         self.community_cards: List[Card] = []
         self.pot = 0
         self.current_bet = 0
-        self.min_raise = big_blind
+        self.min_raise = big_blind if game_mode == "blinds" else max(1, int(initial_chips * ante_percentage))
         
         self.dealer_position = 0
         self.current_player_position = 0
@@ -107,6 +112,10 @@ class Table:
         if len(active_players) < 2:
             return False
         
+        # 轮换庄家位置（每手牌轮换）
+        if self.hand_number > 0:  # 第一手牌庄家位置为0，之后每手牌轮换
+            self.dealer_position = (self.dealer_position + 1) % len(active_players)
+        
         # 重置游戏状态
         self.community_cards = []
         self.pot = 0
@@ -117,6 +126,15 @@ class Table:
         self.deck.reset()
         self.deck.shuffle()
         
+        # 清除所有玩家的庄家标记
+        for player in self.players:
+            player.is_dealer = False
+        
+        # 设置当前庄家
+        if len(active_players) > 0:
+            active_players[self.dealer_position].is_dealer = True
+            print(f"🎯 庄家: {active_players[self.dealer_position].nickname} (位置 {self.dealer_position})")
+        
         for player in active_players:
             # 先重置玩家状态，再发牌
             player.reset_for_new_hand()
@@ -124,22 +142,46 @@ class Table:
             hole_cards = self.deck.deal_cards(2)
             player.deal_hole_cards(hole_cards)
         
-        # 收取盲注
-        if len(active_players) >= 2:
-            sb_player = active_players[0]
-            bb_player = active_players[1]
+        # 根据游戏模式收取初始下注
+        if self.game_mode == "blinds":
+            # 传统大小盲注模式
+            if len(active_players) >= 2:
+                sb_player = active_players[0]
+                bb_player = active_players[1]
+                
+                sb_amount = sb_player.place_bet(self.small_blind)
+                bb_amount = bb_player.place_bet(self.big_blind)
+                self.pot += sb_amount + bb_amount
+                self.current_bet = self.big_blind
+                
+                # 小盲注玩家需要补齐到大盲注才算完成初始行动
+                sb_player.has_acted = False  # 小盲注玩家还需要决定是否跟注
+                bb_player.has_acted = False  # 大盲注玩家有最后行动权
+                
+                print(f"🎮 大小盲注模式: 小盲${self.small_blind}, 大盲${self.big_blind}")
+        
+        elif self.game_mode == "ante":
+            # 按比例下注模式 - 所有人都下注相同比例
+            ante_amount = int(self.initial_chips * self.ante_percentage)
+            if ante_amount < 1:
+                ante_amount = 1  # 最少1个筹码
             
-            sb_amount = sb_player.place_bet(self.small_blind)
-            bb_amount = bb_player.place_bet(self.big_blind)
-            self.pot += sb_amount + bb_amount
-            self.current_bet = self.big_blind
+            total_ante = 0
+            for player in active_players:
+                actual_ante = player.place_bet(ante_amount)
+                total_ante += actual_ante
             
-            # 小盲注玩家需要补齐到大盲注才算完成初始行动
-            sb_player.has_acted = False  # 小盲注玩家还需要决定是否跟注
-            bb_player.has_acted = False  # 大盲注玩家有最后行动权
+            self.pot = total_ante
+            self.current_bet = ante_amount  # 按比例模式开始时当前下注等于ante金额
+            
+            # 所有玩家已经完成初始ante下注，但还可以选择行动（过牌或加注）
+            for player in active_players:
+                player.has_acted = False  # 允许玩家在ante基础上继续行动
+            
+            print(f"🎮 按比例下注模式: 每人下注${ante_amount} (筹码的{self.ante_percentage*100:.1f}%), 总底池${total_ante}, 当前投注${self.current_bet}")
         
         self.last_activity = time.time()
-        print(f"🎮 新手牌开始: 手牌#{self.hand_number}, 阶段={self.game_stage.value}, 活跃玩家={len(active_players)}")
+        print(f"🎮 新手牌开始: 手牌#{self.hand_number}, 阶段={self.game_stage.value}, 活跃玩家={len(active_players)}, 模式={self.game_mode}")
         return True
     
     def process_player_action(self, player_id: str, action: PlayerAction, amount: int = 0) -> Dict:
@@ -173,14 +215,33 @@ class Table:
                 self.pot += actual_amount
                 action_description = f"跟注 ${actual_amount}"
             elif action == PlayerAction.BET:
+                # 在ante模式下，如果所有玩家投注相等（ante金额），允许下注（视为在ante基础上加注）
                 if self.current_bet > 0:
-                    return {'success': False, 'message': '已有下注，请选择跟注或加注'}
+                    # 检查是否所有玩家都投注了相同金额（ante模式的情况）
+                    active_players = [p for p in self.players if p.status == PlayerStatus.PLAYING and p.chips > 0]
+                    all_equal_ante = (self.game_mode == "ante" and 
+                                    all(p.current_bet == self.current_bet for p in active_players) and
+                                    player.current_bet == self.current_bet)
+                    
+                    if not all_equal_ante:
+                        return {'success': False, 'message': '已有下注，请选择跟注或加注'}
+                
                 if amount <= 0:
                     return {'success': False, 'message': '下注金额必须大于0'}
-                actual_amount = player.place_bet(amount)
-                self.current_bet = player.current_bet
-                self.pot += actual_amount
-                action_description = f"下注 ${actual_amount}"
+                    
+                # 在ante模式下，下注实际上是在当前投注基础上增加
+                if self.game_mode == "ante" and player.current_bet == self.current_bet:
+                    # 玩家在ante基础上下注更多
+                    actual_amount = player.place_bet(amount)
+                    self.current_bet = player.current_bet
+                    self.pot += actual_amount
+                    action_description = f"下注 ${actual_amount} (总投注: ${player.current_bet})"
+                else:
+                    # 传统下注模式
+                    actual_amount = player.place_bet(amount)
+                    self.current_bet = player.current_bet
+                    self.pot += actual_amount
+                    action_description = f"下注 ${actual_amount}"
             elif action == PlayerAction.RAISE:
                 if self.current_bet == 0:
                     return {'success': False, 'message': '没有下注，请选择下注'}
@@ -469,19 +530,40 @@ class Table:
         
         print(f"寻找当前行动玩家，阶段：{self.game_stage.value}，当前投注：${self.current_bet}")
         
-        # 按照简单顺序检查所有还在游戏的玩家
-        for i, player in enumerate(self.players):
-            print(f"检查位置{i}的玩家 {player.nickname}：状态={player.status.value}, 投注=${player.current_bet}, 已行动={player.has_acted}, 筹码=${player.chips}")
+        # 根据游戏模式确定行动顺序
+        if self.game_mode == "ante":
+            # ante模式：从庄家下一位开始行动（确保公平轮换）
+            start_position = (self.dealer_position + 1) % len(active_players)
             
-            # 只考虑还在游戏中的玩家（排除没有筹码的观察者）
-            if player.status == PlayerStatus.PLAYING and player.chips > 0:
-                # 检查玩家是否需要行动
-                needs_action = (not player.has_acted or 
-                              (player.current_bet < self.current_bet and player.chips > 0))
+            # 按照庄家后的顺序检查玩家
+            for i in range(len(active_players)):
+                player_index = (start_position + i) % len(active_players)
+                player = active_players[player_index]
                 
-                if needs_action:
-                    print(f"找到需要行动的玩家：{player.nickname}")
-                    return player
+                print(f"检查位置{player_index}的玩家 {player.nickname}：状态={player.status.value}, 投注=${player.current_bet}, 已行动={player.has_acted}, 筹码=${player.chips}")
+                
+                if player.chips > 0:
+                    # 检查玩家是否需要行动
+                    needs_action = (not player.has_acted or 
+                                  (player.current_bet < self.current_bet and player.chips > 0))
+                    
+                    if needs_action:
+                        print(f"找到需要行动的玩家：{player.nickname} (庄家后第{i+1}位)")
+                        return player
+        else:
+            # blinds模式：按照原有逻辑（小盲、大盲顺序）
+            for i, player in enumerate(self.players):
+                print(f"检查位置{i}的玩家 {player.nickname}：状态={player.status.value}, 投注=${player.current_bet}, 已行动={player.has_acted}, 筹码=${player.chips}")
+                
+                # 只考虑还在游戏中的玩家（排除没有筹码的观察者）
+                if player.status == PlayerStatus.PLAYING and player.chips > 0:
+                    # 检查玩家是否需要行动
+                    needs_action = (not player.has_acted or 
+                                  (player.current_bet < self.current_bet and player.chips > 0))
+                    
+                    if needs_action:
+                        print(f"找到需要行动的玩家：{player.nickname}")
+                        return player
         
         print("没有找到需要行动的玩家")
         return None
@@ -495,6 +577,8 @@ class Table:
             'small_blind': self.small_blind,
             'big_blind': self.big_blind,
             'max_players': self.max_players,
+            'game_mode': self.game_mode,
+            'ante_percentage': self.ante_percentage,
             'game_stage': self.game_stage.value,
             'hand_number': self.hand_number,
             'community_cards': [card.to_dict() for card in self.community_cards],

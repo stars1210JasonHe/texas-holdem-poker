@@ -17,6 +17,10 @@ class GameLogger:
         self.db_path = db_path
         self.init_database()
     
+    def get_connection(self):
+        """获取数据库连接的上下文管理器"""
+        return sqlite3.connect(self.db_path)
+    
     def init_database(self):
         """初始化数据库表"""
         conn = sqlite3.connect(self.db_path)

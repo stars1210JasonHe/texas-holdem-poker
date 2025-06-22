@@ -50,6 +50,8 @@ class PokerDatabase:
                     big_blind INTEGER NOT NULL,
                     max_players INTEGER NOT NULL,
                     initial_chips INTEGER NOT NULL,
+                    game_mode TEXT NOT NULL DEFAULT 'blinds',
+                    ante_percentage REAL DEFAULT 0.02,
                     game_stage TEXT NOT NULL DEFAULT 'waiting',
                     hand_number INTEGER DEFAULT 0,
                     pot INTEGER DEFAULT 0,
@@ -159,7 +161,8 @@ class PokerDatabase:
                 conn.commit()
     
     def create_table(self, title: str, created_by: str, small_blind: int = 10, 
-                    big_blind: int = 20, max_players: int = 9, initial_chips: int = 1000) -> str:
+                    big_blind: int = 20, max_players: int = 9, initial_chips: int = 1000,
+                    game_mode: str = "blinds", ante_percentage: float = 0.02) -> str:
         """创建新房间"""
         with self.lock:
             with self.get_connection() as conn:
@@ -171,13 +174,14 @@ class PokerDatabase:
                 cursor.execute('''
                     INSERT INTO tables (
                         id, title, small_blind, big_blind, max_players, initial_chips,
-                        created_by, created_at, last_activity
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        game_mode, ante_percentage, created_by, created_at, last_activity
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (table_id, title, small_blind, big_blind, max_players, 
-                      initial_chips, created_by, current_time, current_time))
+                      initial_chips, game_mode, ante_percentage, created_by, 
+                      current_time, current_time))
                 
                 conn.commit()
-                print(f"创建新房间: {title} (ID: {table_id}) by {created_by}")
+                print(f"创建新房间: {title} (ID: {table_id}) by {created_by}, 模式: {game_mode}")
                 return table_id
     
     def get_table(self, table_id: str) -> Optional[Dict]:
