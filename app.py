@@ -6,6 +6,7 @@ Texas Hold'em Poker Game Main Application
 import uuid
 import time
 import re
+import traceback
 from typing import Dict, List, Optional
 from flask import Flask, request, jsonify, render_template
 from flask_socketio import SocketIO, emit, join_room, leave_room, rooms
@@ -36,6 +37,20 @@ app.config['SECRET_KEY'] = 'poker_game_secret_key_2025'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', 
                   logger=False, engineio_logger=False, ping_timeout=30, ping_interval=25)
 
+# Socket.IO错误处理
+@socketio.on_error_default
+def default_error_handler(e):
+    """默认错误处理器"""
+    if 'Session is disconnected' in str(e):
+        # 会话断开连接是正常的网络状况，只记录调试信息
+        print(f"🔌 Socket会话断开连接: {request.sid}")
+    else:
+        # 其他错误需要记录详细信息
+        print(f"❌ Socket.IO错误: {e}")
+        import traceback
+        traceback.print_exc()
+    return False  # 不向客户端发送错误信息
+
 # 全局状态管理
 tables: Dict[str, Table] = {}
 players: Dict[str, Player] = {}
@@ -62,28 +77,63 @@ def process_bot_actions(table_id: str):
             print(f"🛑 游戏已结束，停止机器人处理 (table_id: {table_id})")
             return None
         
-                result = table.process_bot_actions()
-                
+        # 检查是否有机器人需要行动，如果有就先通知前端
+        current_player = table.get_current_player()
+        if current_player and current_player.is_bot:
+            # 获取机器人等级和对应的思考时间
+            from poker_engine.bot import BotLevel
+            thinking_delays = {
+                BotLevel.BEGINNER: 1.0,      # 初级 1秒
+                BotLevel.INTERMEDIATE: 2.0,  # 中级 2秒
+                BotLevel.ADVANCED: 3.0,      # 高级 3秒
+                BotLevel.GOD: 5.0            # 德州扑克之神 5秒 (分析所有手牌需要更多时间)
+            }
+            delay = thinking_delays.get(current_player.bot_level, 1.0)
+            
+            # 增强调试信息
+            print(f"🤖 机器人行动准备: {current_player.nickname}")
+            print(f"  - 机器人ID: {current_player.id}")
+            print(f"  - 机器人类型: {type(current_player)}")
+            print(f"  - 是否是Bot实例: {isinstance(current_player, Bot)}")
+            print(f"  - bot_level属性存在: {hasattr(current_player, 'bot_level')}")
+            if hasattr(current_player, 'bot_level'):
+                print(f"  - 机器人等级: {current_player.bot_level}")
+                print(f"  - 等级值: {current_player.bot_level.value}")
+                print(f"  - 等级类型: {type(current_player.bot_level)}")
+                print(f"  - 思考时间: {delay}秒")
+            else:
+                print(f"  - ❌ 机器人缺少bot_level属性，使用默认延迟1秒")
+                delay = 1.0
+            
+            # 通知前端机器人正在思考
+            socketio.emit('bot_thinking', {
+                'bot_name': current_player.nickname,
+                'bot_level': current_player.bot_level.value,
+                'thinking_time': delay
+            }, room=table_id)
+        
+        result = table.process_bot_actions()
+        
         # 调试：打印机器人处理结果
         print(f"🤖 机器人处理结果: {result}")
         print(f"🤖 游戏阶段: {table.game_stage.value}")
         
         # 检查是否手牌结束
-                if result and result.get('hand_complete'):
+        if result and result.get('hand_complete'):
             print(f"🏆 机器人处理导致手牌结束")
-                    showdown_info = result.get('showdown_info', {})
-                    winner = result.get('winner')
+            showdown_info = result.get('showdown_info', {})
+            winner = result.get('winner')
             print(f"🏆 准备调用handle_hand_end，winner: {winner}, showdown_info: {showdown_info}")
-                    handle_hand_end(table_id, winner, showdown_info)
+            handle_hand_end(table_id, winner, showdown_info)
             return result
         else:
             print(f"🔍 手牌未结束，继续游戏流程")
-                
+        
         # 广播更新后的桌面状态
-                socketio.emit('table_updated', table.get_table_state(), room=table_id)
-                
+        socketio.emit('table_updated', table.get_table_state(), room=table_id)
+        
         # 检查是否轮到人类玩家行动
-                current_player = table.get_current_player()
+        current_player = table.get_current_player()
         if current_player and not current_player.is_bot:
             # 检查玩家是否有筹码
             if current_player.chips <= 0 or current_player.status.value == 'broke':
@@ -92,19 +142,19 @@ def process_bot_actions(table_id: str):
                 
             # 找到该玩家的session并发送行动通知
             player_session = None
-                    for session_id, session_info in player_sessions.items():
-                        if session_info['player_id'] == current_player.id:
+            for session_id, session_info in player_sessions.items():
+                if session_info['player_id'] == current_player.id:
                     player_session = session_id
                     break
             
             if player_session:
                 print(f"🎯 轮到人类玩家 {current_player.nickname} 行动")
-                            socketio.emit('your_turn', {
-                                'current_bet': table.current_bet,
-                                'min_bet': table.big_blind,
-                                'pot': table.pot,
-                                'your_bet': current_player.current_bet,
-                                'your_chips': current_player.chips
+                socketio.emit('your_turn', {
+                    'current_bet': table.current_bet,
+                    'min_bet': table.big_blind,
+                    'pot': table.pot,
+                    'your_bet': current_player.current_bet,
+                    'your_chips': current_player.chips
                 }, room=player_session)
                 
                 return result
@@ -525,9 +575,9 @@ def get_player_showdown_summary(player_id):
             win_rate = round((wins / total_showdowns * 100), 1) if total_showdowns > 0 else 0
             
             # 获取手牌类型分布
-                cursor.execute('''
+            cursor.execute('''
                 SELECT hand_rank, COUNT(*) as count
-                    FROM showdown_details
+                FROM showdown_details
                 WHERE player_id = ?
                 GROUP BY hand_rank
                 ORDER BY count DESC
@@ -536,7 +586,7 @@ def get_player_showdown_summary(player_id):
             hand_types = dict(cursor.fetchall())
             
             return jsonify({
-            'success': True,
+                'success': True,
                 'has_data': True,
                 'nickname': nickname,
                 'overall_stats': {
@@ -548,7 +598,7 @@ def get_player_showdown_summary(player_id):
                     'average_winnings': round(avg_winnings, 2) if avg_winnings else 0
                 },
                 'hand_type_distribution': hand_types
-        })
+            })
         
     except Exception as e:
         print(f"获取玩家摊牌统计失败: {e}")
@@ -601,8 +651,8 @@ def get_player_showdown_history(player_id):
                     'winnings': row[11]
                 })
             
-                return jsonify({
-                    'success': True,
+            return jsonify({
+                'success': True,
                 'history': history
             })
             
@@ -619,8 +669,11 @@ def get_player_showdown_history(player_id):
 @socketio.on('connect')
 def handle_connect():
     """客户端连接"""
-    print(f"Client connected: {request.sid}")
-    emit('connected', {'session_id': request.sid})
+    try:
+        print(f"Client connected: {request.sid}")
+        emit('connected', {'session_id': request.sid})
+    except Exception as e:
+        print(f"连接处理错误: {e}")
 
 
 @socketio.on('disconnect')
@@ -652,10 +705,10 @@ def handle_disconnect():
                 'active_tables': active_tables
             })
             
-            # 设置90秒后移除玩家（如果没有重新连接）
+            # 设置30秒后移除玩家（如果没有重新连接）
             def remove_player_delayed():
                 import time
-                time.sleep(90)
+                time.sleep(30)
                 
                 # 检查玩家是否重新连接
                 reconnected = False
@@ -665,7 +718,7 @@ def handle_disconnect():
                         break
                 
                 if not reconnected:
-                    print(f"90秒后移除未重连的玩家 {nickname}")
+                    print(f"30秒后移除未重连的玩家 {nickname}")
                     
                     # 从所有房间中移除玩家
                     tables_to_check = []
@@ -691,6 +744,28 @@ def handle_disconnect():
                         'online_players': online_players,
                         'active_tables': active_tables
                     })
+            
+            # 立即从所有房间移除断线玩家并检查是否需要清理
+            tables_to_check = []
+            for table_id, table in list(tables.items()):
+                if any(p.id == player_id for p in table.players):
+                    tables_to_check.append(table_id)
+                    # 立即从房间移除断线玩家
+                    table.remove_player(player_id)
+                    print(f"玩家 {nickname} 已从房间 {table.title} 中移除")
+            
+            # 对所有相关房间进行检查
+            for table_id in tables_to_check:
+                if table_id in tables:
+                    table = tables[table_id]
+                    # 现在检查剩余的人类玩家（不需要排除player_id，因为已经移除了）
+                    human_players = [p for p in table.players if not p.is_bot]
+                    if len(human_players) == 0:
+                        print(f"断线导致房间 {table.title} 无人类玩家，立即清理")
+                        check_and_cleanup_table(table_id)
+                    else:
+                        # 广播更新的房间状态
+                        socketio.emit('table_updated', table.get_table_state(), room=table_id)
             
             socketio.start_background_task(remove_player_delayed)
             
@@ -1034,21 +1109,32 @@ def handle_join_table(data):
                         from poker_engine.bot import Bot, BotLevel
                         try:
                             # 从nickname推断机器人等级
+                            print(f"🔄 重新创建机器人: {db_player['nickname']}")
                             if '新手' in db_player['nickname'] or '菜鸟' in db_player['nickname'] or '学徒' in db_player['nickname']:
                                 level = BotLevel.BEGINNER
+                                print(f"  - 检测为初级机器人")
                             elif '老司机' in db_player['nickname'] or '高手' in db_player['nickname'] or '大神' in db_player['nickname']:
                                 level = BotLevel.INTERMEDIATE
+                                print(f"  - 检测为中级机器人")
                             elif '大师' in db_player['nickname'] or '传奇' in db_player['nickname'] or '王者' in db_player['nickname']:
                                 level = BotLevel.ADVANCED
+                                print(f"  - 检测为高级机器人")
+                            elif '德州之神' in db_player['nickname'] or '扑克天神' in db_player['nickname'] or '全知全能' in db_player['nickname'] or '透视眼' in db_player['nickname'] or '作弊之王' in db_player['nickname']:
+                                level = BotLevel.GOD
+                                print(f"  - 检测为德州扑克之神机器人")
                             else:
                                 level = BotLevel.BEGINNER
+                                print(f"  - 未匹配，默认为初级机器人")
                             
                             bot = Bot(db_player['player_id'], db_player['nickname'], db_player['chips'], level)
                             bot.current_bet = db_player['current_bet']
                             bot.status = PlayerStatus[db_player['status'].upper()]
                             table.add_player_at_position(bot, db_player['position'])
+                            print(f"  - ✅ 机器人创建成功，等级: {bot.bot_level}, 类型: {type(bot.bot_level)}")
                         except Exception as e:
-                            print(f"重新创建机器人失败: {e}")
+                            print(f"  - ❌ 重新创建机器人失败: {e}")
+                            import traceback
+                            traceback.print_exc()
                     else:
                         # 重新创建人类玩家
                         if db_player['player_id'] == player_id:
@@ -1207,7 +1293,8 @@ def handle_add_bot(data):
         bot_names = {
             'beginner': ['新手', '菜鸟', '学徒', '小白', '萌新'],
             'intermediate': ['老司机', '高手', '大神', '专家', '老手'],
-            'advanced': ['大师', '传奇', '王者', '至尊', '无敌']
+            'advanced': ['大师', '传奇', '王者', '至尊', '无敌'],
+            'god': ['德州之神', '扑克天神', '全知全能', '透视眼', '作弊之王']
         }
         
         available_names = bot_names.get(level_str, ['机器人'])
@@ -1216,15 +1303,22 @@ def handle_add_bot(data):
         
         # 创建机器人
         bot_id = str(uuid.uuid4())
-        bot = Bot(bot_id, bot_name, 1000, level_enum)
+        bot = Bot(bot_id, bot_name, table.initial_chips, level_enum)
         
         # 添加到房间
         if table.add_player(bot):
-            emit('bot_added', {
+            # 同时添加到数据库
+            db.join_table(table_id, bot_id)
+            
+            # 发送机器人添加成功消息
+            socketio.emit('bot_added', {
                 'success': True,
                 'bot': bot.to_dict(),
                 'message': f'机器人 {bot_name} ({level_str}) 已加入房间'
             }, room=table_id)
+            
+            # 广播更新后的桌面状态给所有玩家
+            socketio.emit('table_updated', table.get_table_state(), room=table_id)
             
             print(f"机器人 {bot_name} ({level_str}) 加入房间 {table.title}")
         else:
@@ -1234,106 +1328,6 @@ def handle_add_bot(data):
         print(f"添加机器人失败: {e}")
         emit('error', {'message': f'添加机器人失败: {str(e)}'})
 
-
-@socketio.on('create_table')
-def handle_create_table(data):
-    """创建房间 - 支持新游戏模式"""
-    try:
-        session_id = request.sid
-        
-        if session_id not in player_sessions:
-            emit('error', {'message': '请先登录'})
-            return
-        
-        player_id = player_sessions[session_id]['player_id']
-        
-        # 验证房间参数
-        title = data.get('title', '').strip()
-        if not title:
-            title = '新房间'
-        
-        small_blind = int(data.get('small_blind', 10))
-        big_blind = int(data.get('big_blind', 20))
-        max_players = int(data.get('max_players', 6))
-        initial_chips = int(data.get('initial_chips', 1000))
-        game_mode = data.get('game_mode', 'blinds')  # 新增游戏模式
-        ante_percentage = float(data.get('ante_percentage', 0.02))  # 新增按比例下注
-        
-        # 验证游戏模式
-        if game_mode not in ['blinds', 'ante']:
-            emit('error', {'message': '无效的游戏模式'})
-            return
-        
-        # 验证参数范围
-        if game_mode == 'blinds' and small_blind >= big_blind:
-            emit('error', {'message': '大盲注必须大于小盲注'})
-            return
-        
-        if ante_percentage < 0.001 or ante_percentage > 0.1:
-            emit('error', {'message': '按比例下注必须在0.1%到10%之间'})
-            return
-        
-        # 创建房间到数据库
-        table_id = db.create_table(
-            title=title,
-            created_by=player_id,
-            small_blind=small_blind,
-            big_blind=big_blind,
-            max_players=max_players,
-            initial_chips=initial_chips,
-            game_mode=game_mode,
-            ante_percentage=ante_percentage
-        )
-        
-        # 创建内存中的Table对象
-        table = Table(
-            table_id=table_id,
-            title=title,
-            small_blind=small_blind,
-            big_blind=big_blind,
-            max_players=max_players,
-            initial_chips=initial_chips,
-            game_mode=game_mode,
-            ante_percentage=ante_percentage
-        )
-        tables[table_id] = table
-        
-        # 处理机器人配置
-        bots_config = data.get('bots', {})
-        for level, count in bots_config.items():
-            for _ in range(count):
-                # 添加机器人逻辑
-                from poker_engine.bot import Bot, BotLevel
-                level_mapping = {
-                    'beginner': BotLevel.BEGINNER,
-                    'intermediate': BotLevel.INTERMEDIATE,
-                    'advanced': BotLevel.ADVANCED
-                }
-                bot_level = level_mapping.get(level, BotLevel.BEGINNER)
-                
-                bot_id = f"bot_{uuid.uuid4().hex[:8]}"
-        bot_names = {
-                    BotLevel.BEGINNER: ['小新手', '初学者', '菜鸟', '新人王'],
-                    BotLevel.INTERMEDIATE: ['中级高手', '经验玩家', '稳定发挥', '技术流'],
-                    BotLevel.ADVANCED: ['职业选手', '高级玩家', '德州专家', '王者归来']
-        }
-        
-                import random
-                bot_nickname = random.choice(bot_names[bot_level])
-                bot = Bot(bot_id, bot_nickname, initial_chips, bot_level)
-                table.add_player(bot)
-        
-        emit('room_created', {
-            'success': True,
-                        'table_id': table_id,
-            'message': f'房间"{title}"创建成功！'
-        })
-        
-        print(f"🎯 房间创建成功: {title} (模式: {game_mode}) by {player_id}")
-            
-    except Exception as e:
-        print(f"创建房间失败: {e}")
-        emit('error', {'message': f'创建房间失败: {str(e)}'})
 
 
 @socketio.on('start_hand')
@@ -1859,7 +1853,7 @@ def handle_hand_end(table_id, winner, showdown_info):
             winner_list = [{'nickname': winner_player.nickname, 'chips': winner_player.chips}]
             if showdown_info.get('win_reason') == 'others_folded':
                 winner_message = f"手牌结束，{winner_player.nickname} 获胜（其他玩家弃牌）"
-                    else:
+            else:
                 winner_message = f"手牌结束，{winner_player.nickname} 获胜"
         
         # 如果有摊牌信息，添加详细信息
@@ -1879,7 +1873,7 @@ def handle_hand_end(table_id, winner, showdown_info):
         
         # 广播手牌结束信息和更新后的游戏状态
         updated_game_state = table.get_table_state()
-        socketio.emit('hand_ended', {
+        hand_ended_data = {
             'winners': winner_list,
             'message': winner_message,
             'table_state': updated_game_state,  # 包含更新后的筹码信息
@@ -1888,7 +1882,17 @@ def handle_hand_end(table_id, winner, showdown_info):
                 'community_cards': showdown_info.get('community_cards', []),
                 'showdown_players': showdown_players
             }
-        }, room=table_id)
+        }
+        
+        # 调试：打印摊牌数据
+        print(f"🎯 发送hand_ended事件:")
+        print(f"  - is_showdown: {hand_ended_data['showdown_info']['is_showdown']}")
+        print(f"  - showdown_players数量: {len(hand_ended_data['showdown_info']['showdown_players'])}")
+        if hand_ended_data['showdown_info']['showdown_players']:
+            for i, player in enumerate(hand_ended_data['showdown_info']['showdown_players']):
+                print(f"    玩家{i+1}: {player['nickname']} - {player['hand_description']}")
+        
+        socketio.emit('hand_ended', hand_ended_data, room=table_id)
         
         # 检查是否还有足够玩家继续游戏
         active_players = [p for p in table.players if p.chips > 0]

@@ -324,7 +324,8 @@ class Table:
                 'pot_size': self.pot,
                 'active_players': len([p for p in self.players if p.status == PlayerStatus.PLAYING]),
                 'position': 'middle',  # 简化，可以后续改进位置判断
-                'min_raise': self.min_raise
+                'min_raise': self.min_raise,
+                'all_players': self.players  # 为GOD级别机器人提供所有玩家信息
             }
             
             # 机器人决策
@@ -332,12 +333,19 @@ class Table:
             if action:
                 action_type, amount = action
                 action_desc = self._get_action_description(action_type, amount)
-                print(f"🤖 {player.nickname} 决定: {action_desc}")
                 
-                # 稍微延迟，模拟思考时间（0.5-2秒）
-                import random
-                think_time = random.uniform(0.5, 2.0)
-                time.sleep(think_time)
+                # 根据机器人等级添加思考时间延迟
+                from .bot import BotLevel
+                thinking_delays = {
+                    BotLevel.BEGINNER: 1.0,      # 初级 1秒
+                    BotLevel.INTERMEDIATE: 2.0,  # 中级 2秒  
+                    BotLevel.ADVANCED: 3.0       # 高级 3秒
+                }
+                
+                delay = thinking_delays.get(player.bot_level, 1.0)
+                print(f"🤖 {player.nickname} ({player.bot_level.value}) 思考中... ({delay}秒)")
+                time.sleep(delay)
+                print(f"🤖 {player.nickname} 决定: {action_desc}")
                 
                 # 显示机器人手牌（用于调试）
                 if len(player.hole_cards) == 2:
@@ -645,7 +653,7 @@ class Table:
         elif self.game_stage == GameStage.RIVER:
             # 进入摊牌阶段
             self.game_stage = GameStage.SHOWDOWN
-            self._determine_winner()
+            # 注意：不在这里调用_determine_winner，让process_game_flow处理
         else:
             return False
         
@@ -676,6 +684,11 @@ class Table:
     def _determine_winner(self) -> Dict:
         """确定获胜者，返回详细的摊牌信息"""
         active_players = [p for p in self.players if p.status == PlayerStatus.PLAYING]
+        
+        print(f"🏆 _determine_winner 被调用:")
+        print(f"  - 活跃玩家数: {len(active_players)}")
+        print(f"  - 游戏阶段: {self.game_stage.value}")
+        print(f"  - 公共牌数量: {len(self.community_cards)}")
         
         showdown_info = {
             'winner': None,
@@ -777,6 +790,12 @@ class Table:
                 print(f"🏆 {player_type} {winner.nickname} 获胜！手牌：{player_hands[0]['hand_description']}，赢得底池 ${self.pot}")
                 print("=" * 60)
         
+        # 调试：打印最终的摊牌信息
+        print(f"🏁 摊牌信息总结:")
+        print(f"  - is_showdown: {showdown_info['is_showdown']}")
+        print(f"  - showdown_players数量: {len(showdown_info['showdown_players'])}")
+        print(f"  - winner: {showdown_info['winner'].nickname if showdown_info['winner'] else None}")
+        
         return showdown_info
     
     def process_game_flow(self) -> Dict:
@@ -803,9 +822,10 @@ class Table:
         # 检查投注回合是否完成
         if self.is_betting_round_complete():
             print("投注回合完成！")
-            if self.is_hand_complete():
-                # 手牌结束
-                print("手牌结束，确定获胜者...")
+            
+            # 先检查是否只剩一个玩家（提前结束）
+            if len(active_players) <= 1:
+                print("只剩一个玩家，手牌提前结束")
                 showdown_result = self._determine_winner()
                 result['hand_complete'] = True
                 result['showdown_info'] = showdown_result
@@ -820,8 +840,18 @@ class Table:
                     result['message'] = f"进入 {self.game_stage.value} 阶段"
                     print(f"成功进入 {self.game_stage.value} 阶段")
                     
+                    # 如果进入SHOWDOWN阶段，手牌结束，需要确定获胜者
+                    if self.game_stage == GameStage.SHOWDOWN:
+                        print("🏆 进入SHOWDOWN阶段，开始摊牌")
+                        showdown_result = self._determine_winner()
+                        result['hand_complete'] = True
+                        result['showdown_info'] = showdown_result
+                        result['winner'] = showdown_result.get('winner', None)
+                        if result['winner']:
+                            result['message'] = f"{result['winner'].nickname} 获胜，赢得 ${showdown_result['pot']}"
+                    
                     # 如果进入FINISHED阶段，表示手牌结束
-                    if self.game_stage == GameStage.FINISHED:
+                    elif self.game_stage == GameStage.FINISHED:
                         print("🏆 游戏阶段为FINISHED，手牌已结束")
                         result['hand_complete'] = True
                         

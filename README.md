@@ -40,7 +40,7 @@
 
 1. **克隆项目**
 ```bash
-git clone https://github.com/your-username/texas-holdem-poker.git
+git clone https://github.com/stars1210JasonHe/texas-holdem-poker.git
 cd texas-holdem-poker
 ```
 
