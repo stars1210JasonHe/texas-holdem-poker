@@ -1,42 +1,84 @@
 # 🃏 德州扑克游戏 / Texas Hold'em Poker Game
 
-[English](#english) | [中文](#中文)
+一个功能完整、体验丰富的在线多人德州扑克游戏，集成了智能AI、实时交互、数据分析和沉浸式音效体验。
+
+A full-featured, experience-rich online multiplayer Texas Hold'em poker game with intelligent AI, real-time interaction, data analysis, and immersive audio experience.
+
+![GitHub stars](https://img.shields.io/github/stars/stars1210JasonHe/texas-holdem-poker?style=social)
+![GitHub forks](https://img.shields.io/github/forks/stars1210JasonHe/texas-holdem-poker?style=social)
+![GitHub license](https://img.shields.io/github/license/stars1210JasonHe/texas-holdem-poker)
+![Python version](https://img.shields.io/badge/python-3.8%2B-blue)
+
+[中文](#中文版) | [English](#english-version)
 
 ---
 
-## 中文
+## 中文版
 
-一个功能完整的在线多人德州扑克游戏，支持人机对战、实时交互和智能辅助功能。
+### 🎯 项目概述
 
-### ✨ 特色功能
+这是一个基于Web的实时多人德州扑克游戏平台，支持人机对战、智能辅助、数据分析和沉浸式音效。无论您是德州扑克新手还是资深玩家，都能在这里找到适合的游戏体验。
 
-- 🎮 **多人在线游戏** - 支持最多9人同时游戏，局域网实时对战
-- 🤖 **智能AI机器人** - 提供多种难度级别的AI对手陪练
-- 📊 **实时胜率计算** - 蒙特卡洛模拟计算当前手牌胜率
-- 🃏 **记牌助手** - 帮助跟踪已出现的牌面信息
-- 🎯 **标准德州扑克规则** - 完整实现德州扑克游戏逻辑
-- 💾 **数据持久化** - SQLite数据库存储游戏数据和玩家信息
-- 🔄 **断线重连** - 支持网络断线后自动重连
-- 📱 **响应式UI** - 现代化Web界面，支持各种设备
-- 🏆 **详细摊牌记录** - 完整记录每次摊牌的牌型和排名
-- 👀 **零筹码观察者模式** - 没有筹码的玩家可以观察游戏
+#### 🎮 在线体验
+- **快速开始**: 无需注册，输入昵称即可开始游戏
+- **多人对战**: 支持最多9人同时在线游戏
+- **智能AI**: 提供不同难度的机器人对手
+- **实时互动**: WebSocket实现低延迟实时通信
 
-### 🛠️ 技术栈
+### ✨ 核心特性
 
-- **后端**: Python 3.8+, Flask, Flask-SocketIO
-- **前端**: HTML5, CSS3, JavaScript, Tailwind CSS
-- **数据库**: SQLite
-- **实时通信**: WebSocket (Socket.IO)
-- **游戏引擎**: 自研德州扑克核心引擎
+#### 🎲 游戏体验
+- **🃏 标准德州扑克规则** - 完整实现Hold'em游戏逻辑
+- **👥 多人在线对战** - 支持2-9人实时游戏
+- **🤖 智能AI机器人** - 三种难度级别的AI对手
+- **🎵 沉浸式音效** - 智能背景音乐系统，根据游戏状态自动切换
+- **📱 响应式设计** - 适配桌面、平板和手机设备
+- **🔄 断线重连** - 网络断线后自动恢复游戏状态
 
-### 📦 安装与部署
+#### 🧠 智能辅助
+- **📊 实时胜率计算** - 蒙特卡洛模拟计算当前手牌胜率
+- **🃏 记牌助手** - 跟踪已出现牌面，显示剩余牌组信息
+- **📈 数据分析** - 详细的游戏统计和历史记录
+- **🎯 决策建议** - 基于概率的最优决策提示
+- **👀 观察者模式** - 零筹码玩家可继续观察游戏
+
+#### 🎵 音乐系统
+- **🎶 智能音乐切换** - 根据游戏场景自动播放相应音乐
+- **🎛️ 音乐控制面板** - 播放/暂停、音量调节、位置自定义
+- **⌨️ 快捷键操作** - M键切换播放，Ctrl+M打开设置
+- **💾 偏好记忆** - 自动保存音量、静音状态等用户设置
+- **📱 响应式界面** - 适配不同设备的音乐控制体验
+
+#### 💾 数据管理
+- **🗃️ 完整数据持久化** - SQLite数据库存储所有游戏数据
+- **📋 摊牌记录系统** - 详细记录每次摊牌的牌型和排名
+- **📊 个人统计面板** - 胜率、奖金、手牌历史等数据分析
+- **🔍 历史查询** - 支持摊牌历史的详细查询和回顾
+- **⚡ 状态恢复** - 游戏意外中断后的状态自动恢复
+
+### 🛠️ 技术架构
+
+#### 后端技术栈
+- **🐍 Python 3.8+** - 核心开发语言
+- **🌶️ Flask** - Web应用框架
+- **🔌 Flask-SocketIO** - 实时通信
+- **🗄️ SQLite** - 数据存储
+- **🎯 自研游戏引擎** - 德州扑克核心逻辑
+
+#### 前端技术栈
+- **🌐 HTML5 + CSS3** - 现代Web标准
+- **⚡ JavaScript ES6+** - 交互逻辑
+- **🎨 Tailwind CSS** - 现代化UI框架
+- **🔌 Socket.IO** - 实时通信客户端
+- **🎵 Web Audio API** - 音频播放控制
+
+### 🚀 快速开始
 
 #### 环境要求
+- **Python 3.8+**
+- **现代浏览器** (Chrome 80+, Firefox 75+, Edge 80+, Safari 13+)
 
-- Python 3.8 或更高版本
-- 现代浏览器 (Chrome, Firefox, Edge, Safari)
-
-#### 快速开始
+#### 安装步骤
 
 1. **克隆项目**
 ```bash
@@ -47,9 +89,11 @@ cd texas-holdem-poker
 2. **创建虚拟环境**
 ```bash
 python -m venv poker_env
+
 # Windows
 poker_env\Scripts\activate
-# macOS/Linux
+
+# macOS/Linux  
 source poker_env/bin/activate
 ```
 
@@ -63,243 +107,139 @@ pip install -r requirements.txt
 python app.py
 ```
 
-5. **访问游戏**
+5. **开始游戏**
 ```
-打开浏览器访问: http://localhost:5000
+浏览器访问: http://localhost:5000
 ```
 
-### 🎮 游戏说明
+### 🎮 游戏指南
 
-#### 游戏流程
+#### 基础操作
+- **♠️ 过牌 (Check)** - 不下注，传递行动权
+- **💰 跟注 (Call)** - 跟进当前下注额
+- **📈 加注 (Raise/Bet)** - 增加下注金额
+- **🗑️ 弃牌 (Fold)** - 放弃当前手牌
+- **🎯 全下 (All-in)** - 投入所有筹码
 
-1. **进入大厅** - 输入昵称进入游戏大厅
-2. **创建/加入房间** - 创建新房间或加入现有房间
-3. **添加机器人** - 可选择添加不同难度的AI对手
-4. **开始游戏** - 至少2名玩家即可开始游戏
-5. **游戏对局** - 按照标准德州扑克规则进行游戏
-
-#### 操作说明
-
-- **过牌 (Check)** - 不下注，将行动权传递给下一位玩家
-- **跟注 (Call)** - 跟进当前的下注额
-- **加注/下注 (Bet/Raise)** - 增加下注金额
-- **弃牌 (Fold)** - 放弃当前手牌
-- **全下 (All-in)** - 投入所有剩余筹码
-
-#### 辅助功能
-
-- **胜率计算器** - 点击相应按钮查看当前手牌胜率
-- **记牌助手** - 显示已知牌面和剩余牌组信息
-- **自动开始下轮** - 投票系统决定是否开始新一轮游戏
-- **摊牌详情** - 查看详细的摊牌结果和牌型排名
-
-#### 零筹码处理
-
-- **观察者模式** - 筹码用完的玩家自动成为观察者
-- **继续观看** - 可以查看其他玩家的手牌和游戏进程
-- **机器人处理** - 零筹码机器人自动退出游戏流程
-
-### 🔧 配置说明
-
-#### 房间设置
-
-- **小盲注**: 默认 $10
-- **大盲注**: 默认 $20  
-- **最大玩家数**: 1-9人可调
-- **初始筹码**: 默认 $1000
+#### 🎵 音乐体验
+- **🏠 大厅音乐** - 轻松舒缓的背景音乐
+- **🎲 游戏桌音乐** - 专注沉稳的游戏配乐
+- **⚡ 紧张时刻** - 轮到行动或大额下注时的刺激音乐
 
 #### AI机器人级别
+- **🟢 简单 (Beginner)** - 保守型打法，适合新手练习
+- **🟡 中等 (Intermediate)** - 平衡型打法，有一定技巧
+- **🔴 困难 (Advanced)** - 激进型打法，善于虚张声势
 
-- **简单 (Beginner)** - 保守型打法，适合新手练习
-- **中等 (Intermediate)** - 平衡型打法，有一定技巧
-- **困难 (Advanced)** - 激进型打法，善于虚张声势
+### 🔧 高级配置
 
-### 📁 项目结构
-
-```
-texas-holdem-poker/
-├── app.py                    # 主应用程序
-├── database.py              # 数据库操作
-├── db_adapter.py            # 数据库适配器
-├── game_logger.py           # 游戏日志记录
-├── player_persistence.py    # 玩家数据持久化
-├── table_state_manager.py   # 牌桌状态管理
-├── poker_engine/            # 游戏引擎核心
-│   ├── __init__.py
-│   ├── bot.py              # AI机器人逻辑
-│   ├── card.py             # 扑克牌类
-│   ├── hand_evaluator.py   # 牌型评估器
-│   ├── player.py           # 玩家类
-│   └── table.py            # 牌桌类
-├── templates/               # HTML模板
-│   ├── base.html
-│   ├── index.html          # 首页
-│   ├── lobby.html          # 游戏大厅
-│   └── table.html          # 游戏桌面
-├── static/                  # 静态资源
-├── tests/                   # 测试文件
-└── requirements.txt         # 项目依赖
+#### 游戏房间设置
+```python
+DEFAULT_SETTINGS = {
+    'small_blind': 10,      # 小盲注
+    'big_blind': 20,        # 大盲注  
+    'initial_chips': 1000,  # 初始筹码
+    'max_players': 9,       # 最大玩家数
+    'auto_start_delay': 3   # 自动开始延迟(秒)
+}
 ```
 
-### 🎯 核心功能模块
-
-#### 游戏引擎 (poker_engine)
-
-- **Card & Deck**: 扑克牌和牌组管理
-- **Player**: 玩家状态和行为管理  
-- **Table**: 游戏桌面和回合控制
-- **HandEvaluator**: 牌型识别和比较
-- **Bot**: AI玩家决策逻辑
-
-#### 数据管理
-
-- **Database**: SQLite数据库操作
-- **GameLogger**: 详细的游戏过程记录
-- **PlayerPersistence**: 玩家数据持久化
-- **TableStateManager**: 游戏状态恢复机制
-
-#### 摊牌系统
-
-- **详细记录**: 记录所有玩家的底牌和牌型
-- **排名显示**: 显示玩家排名和奖金分配
-- **历史查询**: 提供摊牌历史查询API
-- **可视化**: 现代化的摊牌结果展示界面
-
-### 🧪 测试
-
-运行测试用例:
-
+#### 音乐文件配置
 ```bash
-# 测试双人游戏
-python test_two_humans.py
-
-# 测试人机对战
-python test_two_humans_one_bot.py
-
-# 测试摊牌功能
-python test_showdown.py
+# 音乐文件路径 (static/audio/)
+lobby-music.mp3    # 大厅背景音乐
+table-music.mp3    # 游戏桌音乐  
+action-music.mp3   # 紧张时刻音乐
 ```
 
-### 🚀 部署建议
+### 📞 联系方式
 
-#### 局域网部署
-
-1. 确保防火墙允许5000端口访问
-2. 修改`app.py`中的host为服务器IP
-3. 局域网内其他设备通过IP:5000访问
-
-#### 生产环境部署
-
-建议使用以下配置:
-
-- **Web服务器**: Nginx + Gunicorn
-- **进程管理**: Supervisor 或 systemd
-- **数据库**: 可升级至PostgreSQL/MySQL
-- **缓存**: Redis (用于session管理)
-
-### 📊 性能优化
-
-- 使用eventlet提供高并发WebSocket支持
-- SQLite连接池和事务优化
-- 前端资源压缩和缓存
-- AI决策算法优化
-
-### 🆕 最新更新
-
-#### v2.0 (2025-06)
-
-- ✨ **全新摊牌记录系统**
-  - 详细记录每次摊牌的所有玩家信息
-  - 显示牌型排名和奖金分配
-  - 提供摊牌历史查询功能
-
-- ✨ **零筹码玩家处理**
-  - 新增观察者模式，零筹码玩家可继续观看
-  - 优化游戏流程，跳过无筹码玩家
-  - 改进机器人零筹码处理逻辑
-
-- 🔧 **核心引擎优化**
-  - 改进手牌评估算法
-  - 优化游戏状态管理
-  - 增强玩家动作验证
-
-### 🤝 贡献指南
-
-欢迎提交Issues和Pull Requests！
-
-1. Fork项目
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启Pull Request
-
-### 📜 开源协议
-
-本项目采用 MIT 协议，详情请查看 [LICENSE](LICENSE) 文件。
-
-### 🔗 相关链接
-
-- [德州扑克规则说明](https://zh.wikipedia.org/wiki/德州撲克)
-- [Flask-SocketIO文档](https://flask-socketio.readthedocs.io/)
-- [项目问题反馈](../../issues)
-
-### 📞 技术支持
-
-如有技术问题或建议，请通过以下方式联系:
-
-- 创建Issue: [GitHub Issues](../../issues)
-- 项目地址: [GitHub Repository](https://github.com/your-username/texas-holdem-poker)
+- **项目主页**: [GitHub Repository](https://github.com/stars1210JasonHe/texas-holdem-poker)
+- **问题反馈**: [GitHub Issues](https://github.com/stars1210JasonHe/texas-holdem-poker/issues)
 
 ---
 
-**享受游戏，理性娱乐！🎲**
+## English Version
 
-## English
+### 🎯 Project Overview
 
-A full-featured online multiplayer Texas Hold'em poker game with AI opponents, real-time interaction, and intelligent assistance features.
+This is a web-based real-time multiplayer Texas Hold'em poker game platform that supports human-AI battles, intelligent assistance, data analysis, and immersive audio effects. Whether you're a Texas Hold'em beginner or veteran player, you can find a suitable gaming experience here.
 
-### ✨ Key Features
+#### 🎮 Online Experience
+- **Quick Start**: No registration required, just enter a nickname to start playing
+- **Multiplayer Battles**: Support up to 9 players online simultaneously
+- **Smart AI**: Provides robot opponents of different difficulty levels
+- **Real-time Interaction**: WebSocket enables low-latency real-time communication
 
-- 🎮 **Multiplayer Online Gaming** - Support up to 9 players simultaneously in LAN real-time battles
-- 🤖 **Smart AI Bots** - Multiple difficulty levels of AI opponents for practice
-- 📊 **Real-time Win Probability** - Monte Carlo simulation for current hand win rates
-- 🃏 **Card Tracking Assistant** - Help track revealed card information
-- 🎯 **Standard Texas Hold'em Rules** - Complete implementation of poker game logic
-- 💾 **Data Persistence** - SQLite database for game data and player information storage
-- 🔄 **Reconnection Support** - Automatic reconnection after network disconnection
-- 📱 **Responsive UI** - Modern web interface supporting various devices
-- 🏆 **Detailed Showdown Records** - Complete recording of showdown hand types and rankings
-- 👀 **Zero-Chip Observer Mode** - Players without chips can observe the game
+### ✨ Core Features
 
-### 🛠️ Technology Stack
+#### 🎲 Gaming Experience
+- **🃏 Standard Texas Hold'em Rules** - Complete implementation of Hold'em game logic
+- **👥 Multiplayer Online Battles** - Support 2-9 players real-time gaming
+- **🤖 Smart AI Robots** - Three difficulty levels of AI opponents
+- **🎵 Immersive Audio** - Smart background music system that automatically switches based on game state
+- **📱 Responsive Design** - Compatible with desktop, tablet, and mobile devices
+- **🔄 Disconnect Reconnection** - Automatic game state recovery after network disconnection
 
-- **Backend**: Python 3.8+, Flask, Flask-SocketIO
-- **Frontend**: HTML5, CSS3, JavaScript, Tailwind CSS
-- **Database**: SQLite
-- **Real-time Communication**: WebSocket (Socket.IO)
-- **Game Engine**: Custom Texas Hold'em core engine
+#### 🧠 Intelligent Assistance
+- **📊 Real-time Win Rate Calculation** - Monte Carlo simulation for current hand win probability
+- **🃏 Card Tracking Assistant** - Track revealed cards and display remaining deck information
+- **📈 Data Analysis** - Detailed game statistics and historical records
+- **🎯 Decision Suggestions** - Optimal decision tips based on probability
+- **👀 Observer Mode** - Zero-chip players can continue observing the game
 
-### 📦 Installation & Deployment
+#### 🎵 Music System
+- **🎶 Smart Music Switching** - Automatically play appropriate music based on game scenarios
+- **🎛️ Music Control Panel** - Play/pause, volume adjustment, position customization
+- **⌨️ Keyboard Shortcuts** - M key for play/pause, Ctrl+M for settings
+- **💾 Preference Memory** - Automatically save volume, mute state, and other user settings
+- **📱 Responsive Interface** - Music control experience adapted for different devices
+
+#### 💾 Data Management
+- **🗃️ Complete Data Persistence** - SQLite database stores all game data
+- **📋 Showdown Recording System** - Detailed recording of hand types and rankings for each showdown
+- **📊 Personal Statistics Panel** - Win rate, prize money, hand history data analysis
+- **🔍 Historical Query** - Support detailed query and review of showdown history
+- **⚡ State Recovery** - Automatic state recovery after unexpected game interruption
+
+### 🛠️ Technical Architecture
+
+#### Backend Technology Stack
+- **🐍 Python 3.8+** - Core development language
+- **🌶️ Flask** - Web application framework
+- **🔌 Flask-SocketIO** - Real-time communication
+- **🗄️ SQLite** - Data storage
+- **🎯 Self-developed Game Engine** - Texas Hold'em core logic
+
+#### Frontend Technology Stack
+- **🌐 HTML5 + CSS3** - Modern web standards
+- **⚡ JavaScript ES6+** - Interactive logic
+- **🎨 Tailwind CSS** - Modern UI framework
+- **🔌 Socket.IO** - Real-time communication client
+- **🎵 Web Audio API** - Audio playback control
+
+### 🚀 Quick Start
 
 #### Requirements
+- **Python 3.8+**
+- **Modern Browser** (Chrome 80+, Firefox 75+, Edge 80+, Safari 13+)
 
-- Python 3.8 or higher
-- Modern browser (Chrome, Firefox, Edge, Safari)
-
-#### Quick Start
+#### Installation Steps
 
 1. **Clone the project**
 ```bash
-git clone https://github.com/your-username/texas-holdem-poker.git
+git clone https://github.com/stars1210JasonHe/texas-holdem-poker.git
 cd texas-holdem-poker
 ```
 
 2. **Create virtual environment**
 ```bash
 python -m venv poker_env
+
 # Windows
 poker_env\Scripts\activate
-# macOS/Linux
+
+# macOS/Linux  
 source poker_env/bin/activate
 ```
 
@@ -308,198 +248,143 @@ source poker_env/bin/activate
 pip install -r requirements.txt
 ```
 
-4. **Start the service**
+4. **Start service**
 ```bash
 python app.py
 ```
 
-5. **Access the game**
+5. **Start gaming**
 ```
-Open browser and visit: http://localhost:5000
-```
-
-### 🎮 Game Instructions
-
-#### Game Flow
-
-1. **Enter Lobby** - Input nickname to enter the game lobby
-2. **Create/Join Room** - Create new room or join existing room
-3. **Add Bots** - Optionally add AI opponents with different difficulty levels
-4. **Start Game** - At least 2 players required to start the game
-5. **Game Session** - Play according to standard Texas Hold'em rules
-
-#### Controls
-
-- **Check** - No bet, pass action to next player
-- **Call** - Match the current bet amount
-- **Bet/Raise** - Increase the bet amount
-- **Fold** - Give up current hand
-- **All-in** - Bet all remaining chips
-
-#### Assistant Features
-
-- **Win Rate Calculator** - Click button to view current hand win probability
-- **Card Tracker** - Display known cards and remaining deck information
-- **Auto Start Next Round** - Voting system to decide whether to start new round
-- **Showdown Details** - View detailed showdown results and hand rankings
-
-#### Zero-Chip Handling
-
-- **Observer Mode** - Players without chips automatically become observers
-- **Continue Watching** - Can view other players' hands and game progress
-- **Bot Handling** - Zero-chip bots automatically exit game flow
-
-### 🔧 Configuration
-
-#### Room Settings
-
-- **Small Blind**: Default $10
-- **Big Blind**: Default $20
-- **Max Players**: 1-9 players adjustable
-- **Initial Chips**: Default $1000
-
-#### AI Bot Levels
-
-- **Beginner** - Conservative playstyle, suitable for beginners
-- **Intermediate** - Balanced playstyle with some skills
-- **Advanced** - Aggressive playstyle, good at bluffing
-
-### 📁 Project Structure
-
-```
-texas-holdem-poker/
-├── app.py                    # Main application
-├── database.py              # Database operations
-├── db_adapter.py            # Database adapter
-├── game_logger.py           # Game logging
-├── player_persistence.py    # Player data persistence
-├── table_state_manager.py   # Table state management
-├── poker_engine/            # Game engine core
-│   ├── __init__.py
-│   ├── bot.py              # AI bot logic
-│   ├── card.py             # Poker card class
-│   ├── hand_evaluator.py   # Hand evaluation
-│   ├── player.py           # Player class
-│   └── table.py            # Table class
-├── templates/               # HTML templates
-│   ├── base.html
-│   ├── index.html          # Home page
-│   ├── lobby.html          # Game lobby
-│   └── table.html          # Game table
-├── static/                  # Static resources
-├── tests/                   # Test files
-└── requirements.txt         # Project dependencies
+Visit in browser: http://localhost:5000
 ```
 
-### 🎯 Core Modules
+### 🎮 Game Guide
 
-#### Game Engine (poker_engine)
+#### Basic Operations
+- **♠️ Check** - No bet, pass action to next player
+- **💰 Call** - Match the current bet amount
+- **📈 Raise/Bet** - Increase the bet amount
+- **🗑️ Fold** - Give up current hand
+- **🎯 All-in** - Bet all remaining chips
 
-- **Card & Deck**: Poker card and deck management
-- **Player**: Player state and behavior management
-- **Table**: Game table and round control
-- **HandEvaluator**: Hand type recognition and comparison
-- **Bot**: AI player decision logic
+#### 🎵 Music Experience
+- **🏠 Lobby Music** - Relaxing and soothing background music
+- **🎲 Game Table Music** - Focused and calm game soundtrack
+- **⚡ Tense Moments** - Exciting music when it's your turn or during big bets
 
-#### Data Management
+#### AI Robot Levels
+- **🟢 Beginner** - Conservative playstyle, suitable for beginners
+- **🟡 Intermediate** - Balanced playstyle with some skills
+- **🔴 Advanced** - Aggressive playstyle, good at bluffing
 
-- **Database**: SQLite database operations
-- **GameLogger**: Detailed game process recording
-- **PlayerPersistence**: Player data persistence
-- **TableStateManager**: Game state recovery mechanism
+### 🔧 Advanced Configuration
 
-#### Showdown System
+#### Game Room Settings
+```python
+DEFAULT_SETTINGS = {
+    'small_blind': 10,      # Small blind
+    'big_blind': 20,        # Big blind
+    'initial_chips': 1000,  # Initial chips
+    'max_players': 9,       # Maximum players
+    'auto_start_delay': 3   # Auto start delay (seconds)
+}
+```
 
-- **Detailed Recording**: Record all players' hole cards and hand types
-- **Ranking Display**: Show player rankings and prize distribution
-- **History Query**: Provide showdown history query API
-- **Visualization**: Modern showdown results display interface
-
-### 🧪 Testing
-
-Run test cases:
-
+#### Music File Configuration
 ```bash
-# Test two human players
-python test_two_humans.py
-
-# Test human vs bot
-python test_two_humans_one_bot.py
-
-# Test showdown functionality
-python test_showdown.py
+# Music file paths (static/audio/)
+lobby-music.mp3    # Lobby background music
+table-music.mp3    # Game table music
+action-music.mp3   # Tense moment music
 ```
 
-### 🚀 Deployment Suggestions
+### 🚀 Deployment Guide
 
-#### LAN Deployment
+#### Development Environment
+```bash
+# Start development server
+python app.py
 
-1. Ensure firewall allows port 5000 access
-2. Modify host in `app.py` to server IP
-3. Other devices in LAN access via IP:5000
+# Enable debug mode
+export FLASK_ENV=development
+python app.py
+```
 
 #### Production Environment
 
-Recommended configuration:
+##### Using Gunicorn + Nginx
+```bash
+# Install Gunicorn
+pip install gunicorn
 
-- **Web Server**: Nginx + Gunicorn
-- **Process Management**: Supervisor or systemd
-- **Database**: Upgrade to PostgreSQL/MySQL
-- **Cache**: Redis (for session management)
+# Start service
+gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:5000 app:app
+```
 
-### 📊 Performance Optimization
-
-- Use eventlet for high-concurrency WebSocket support
-- SQLite connection pooling and transaction optimization
-- Frontend resource compression and caching
-- AI decision algorithm optimization
-
-### 🆕 Latest Updates
-
-#### v2.0 (2025-06)
-
-- ✨ **New Showdown Recording System**
-  - Detailed recording of all player information in each showdown
-  - Display hand rankings and prize distribution
-  - Provide showdown history query functionality
-
-- ✨ **Zero-Chip Player Handling**
-  - Added observer mode for zero-chip players to continue watching
-  - Optimized game flow to skip players without chips
-  - Improved bot zero-chip handling logic
-
-- 🔧 **Core Engine Optimization**
-  - Improved hand evaluation algorithm
-  - Optimized game state management
-  - Enhanced player action validation
+##### Nginx Configuration Example
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    
+    location /socket.io/ {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
 
 ### 🤝 Contributing
 
-Welcome to submit Issues and Pull Requests!
+#### How to Contribute
+1. **Fork the project** to your GitHub account
+2. **Create branch** `git checkout -b feature/your-feature`
+3. **Commit changes** `git commit -m 'Add some feature'`
+4. **Push branch** `git push origin feature/your-feature`
+5. **Submit Pull Request**
 
-1. Fork the project
-2. Create feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Open Pull Request
+#### Code Standards
+- **Python**: Follow PEP 8 code standards
+- **JavaScript**: Use ESLint code checking
+- **Commit Messages**: Use conventional commit format
+- **Documentation**: Update related documentation and comments
 
-### 📜 License
+### 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is based on the [MIT License](LICENSE) open source license.
 
-### 🔗 Related Links
+### 📞 Contact
 
-- [Texas Hold'em Rules](https://en.wikipedia.org/wiki/Texas_hold_%27em)
-- [Flask-SocketIO Documentation](https://flask-socketio.readthedocs.io/)
-- [Project Issues](../../issues)
-
-### 📞 Technical Support
-
-For technical questions or suggestions, please contact via:
-
-- Create Issue: [GitHub Issues](../../issues)
-- Project Repository: [GitHub Repository](https://github.com/your-username/texas-holdem-poker)
+- **Project Homepage**: [GitHub Repository](https://github.com/stars1210JasonHe/texas-holdem-poker)
+- **Issue Feedback**: [GitHub Issues](https://github.com/stars1210JasonHe/texas-holdem-poker/issues)
+- **Feature Suggestions**: [GitHub Discussions](https://github.com/stars1210JasonHe/texas-holdem-poker/discussions)
 
 ---
 
-**Enjoy the game, play responsibly! 🎲**
+## 🌟 Star History
+
+如果这个项目对您有帮助，请考虑给我们一个 ⭐ Star！
+
+If this project helps you, please consider giving us a ⭐ Star!
+
+[![Star History Chart](https://api.star-history.com/svg?repos=stars1210JasonHe/texas-holdem-poker&type=Date)](https://star-history.com/#stars1210JasonHe/texas-holdem-poker&Date)
+
+---
+
+<div align="center">
+
+**🃏 享受德州扑克的乐趣，体验智能游戏的魅力！ 🃏**
+
+**🃏 Enjoy the fun of Texas Hold'em and experience the charm of intelligent gaming! 🃏**
+
+Made with ❤️ by [Jason He](https://github.com/stars1210JasonHe)
+
+</div>
