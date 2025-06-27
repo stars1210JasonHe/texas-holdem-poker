@@ -80,15 +80,15 @@ def process_bot_actions(table_id: str):
         # 检查是否有机器人需要行动，如果有就先通知前端
         current_player = table.get_current_player()
         if current_player and current_player.is_bot:
-            # 获取机器人等级和对应的思考时间
+            # 获取机器人等级和对应的思考时间 - 全部改为0（立即行动）
             from poker_engine.bot import BotLevel
             thinking_delays = {
-                BotLevel.BEGINNER: 1.0,      # 初级 1秒
-                BotLevel.INTERMEDIATE: 2.0,  # 中级 2秒
-                BotLevel.ADVANCED: 3.0,      # 高级 3秒
-                BotLevel.GOD: 5.0            # 德州扑克之神 5秒 (分析所有手牌需要更多时间)
+                BotLevel.BEGINNER: 0.0,      # 初级 0秒（立即）
+                BotLevel.INTERMEDIATE: 0.0,  # 中级 0秒（立即）
+                BotLevel.ADVANCED: 0.0,      # 高级 0秒（立即）
+                BotLevel.GOD: 0.0            # 德州扑克之神 0秒（立即）
             }
-            delay = thinking_delays.get(current_player.bot_level, 1.0)
+            delay = thinking_delays.get(current_player.bot_level, 0.0)
             
             # 增强调试信息
             print(f"🤖 机器人行动准备: {current_player.nickname}")
@@ -664,6 +664,58 @@ def get_player_showdown_history(player_id):
         }), 500
 
 
+@app.route('/api/card_tracking', methods=['POST'])
+def api_card_tracking():
+    """记牌助手API，仅有权限账号可用"""
+    try:
+        data = request.get_json() or {}
+        table_id = data.get('table_id')
+        player_id = data.get('player_id')
+        if not table_id or not player_id:
+            return jsonify({'success': False, 'message': '参数缺失'}), 400
+
+        # 校验玩家是否有权限
+        player_data = db.get_user(player_id)
+        if not player_data or not player_data.get('has_helper', 0):
+            return jsonify({'success': False, 'message': '无权限访问此功能'}), 403
+
+        # 获取内存中的Table对象
+        table = tables.get(table_id)
+        if not table:
+            # 尝试从数据库恢复（略），这里只查内存
+            return jsonify({'success': False, 'message': '房间不存在'}), 404
+
+        info = table.get_card_tracking_info()
+        return jsonify({'success': True, 'data': info})
+    except Exception as e:
+        print(f"记牌助手API异常: {e}")
+        return jsonify({'success': False, 'message': '服务器错误'}), 500
+
+
+@app.route('/api/win_probability', methods=['POST'])
+def api_win_probability():
+    """胜率计算API，所有玩家可用"""
+    try:
+        data = request.get_json() or {}
+        table_id = data.get('table_id')
+        player_id = data.get('player_id')
+        if not table_id or not player_id:
+            return jsonify({'success': False, 'message': '参数缺失'}), 400
+
+        # 获取内存中的Table对象
+        table = tables.get(table_id)
+        if not table:
+            return jsonify({'success': False, 'message': '房间不存在'}), 404
+
+        result = table.calculate_win_probability(player_id)
+        if not result:
+            return jsonify({'success': False, 'message': '无法计算胜率，可能未发牌'}), 400
+        return jsonify({'success': True, 'data': result})
+    except Exception as e:
+        print(f"胜率计算API异常: {e}")
+        return jsonify({'success': False, 'message': '服务器错误'}), 500
+
+
 # WebSocket 事件处理
 
 @socketio.on('connect')
@@ -840,7 +892,8 @@ def handle_register_player(data):
             'success': True,
             'nickname': nickname,
             'player_id': player_data['id'],
-            'chips': player_data.get('chips', 1000)
+            'chips': player_data.get('chips', 1000),
+            'has_helper': player_data.get('has_helper', 0)
         })
         
         # 广播更新统计信息
@@ -975,8 +1028,18 @@ def handle_create_table(data):
                                     ''', (bot_id, bot_name, initial_chips, current_time, current_time))
                                     conn.commit()
                                 
-                                # 将机器人也保存到数据库
-                                db.join_table(table_id, bot_id)
+                                # 将机器人也保存到数据库，正确设置is_bot标识
+                                if db.join_table(table_id, bot_id):
+                                    # 手动更新机器人的is_bot和bot_level字段
+                                    with db.get_connection() as conn:
+                                        cursor = conn.cursor()
+                                        cursor.execute('''
+                                            UPDATE table_players 
+                                            SET is_bot = 1, bot_level = ?
+                                            WHERE table_id = ? AND player_id = ?
+                                        ''', (level_enum.value, table_id, bot_id))
+                                        conn.commit()
+                                        print(f"✅ 机器人 {bot_name} 数据库标识已更新: is_bot=1, bot_level={level_enum.value}")
                                 bots_added += 1
                                 print(f"机器人 {bot_name} ({level}) 加入房间 {title}")
                             else:
@@ -1079,11 +1142,12 @@ def handle_join_table(data):
             if not player_data:
                 emit('error', {'message': '玩家数据不存在'})
                 return
-            
             # 创建玩家对象
             player = Player(player_id, nickname, player_data['chips'])
             players[player_id] = player
             print(f"动态创建玩家对象: {nickname} (ID: {player_id})")
+            # 将 has_helper 字段加入 player_sessions
+            player_sessions[session_id]['has_helper'] = player_data.get('has_helper', 0)
         
         # 检查玩家是否已在房间中（重连情况）
         db_players = db.get_table_players(table_id)
@@ -1161,33 +1225,38 @@ def handle_join_table(data):
             print(f"玩家 {player.nickname} 重连到房间 {table.title}")
             return
         
-        # 新玩家加入
-        if db.join_table(table_id, player_id):
-            # 内存中也要加入
-            if table.add_player(player):
+        # 新玩家加入 - 处理选座位参数
+        position = data.get('position')  # 从前端获取选择的座位
+        if db.join_table(table_id, player_id, position):
+            # 内存中也要加入指定位置
+            if position is not None and table.add_player_at_position(player, position):
                 session_tables[session_id] = table_id
                 join_room(table_id)
-                
-                emit('table_joined', {
-                    'success': True,
-                    'table_id': table_id,
-                    'table': table.get_table_state(player_id),
-                    'reconnected': False
-                })
-                
-                # 向房间内其他玩家广播新玩家加入
-                emit('player_joined', {
-                    'player': {
-                        'id': player.id,
-                        'nickname': player.nickname,
-                        'chips': player.chips,
-                        'position': table.get_player_position(player_id)
-                    }
-                }, room=table_id, include_self=False)
-                
-                print(f"玩家 {player.nickname} 加入房间 {table.title}")
+            elif position is None and table.add_player(player):  # 兼容没有指定位置的情况
+                session_tables[session_id] = table_id
+                join_room(table_id)
             else:
-                emit('error', {'message': '房间已满或加入失败'})
+                emit('error', {'message': f'座位{position + 1}已被占用或添加失败'})
+                return
+            
+            emit('table_joined', {
+                'success': True,
+                'table_id': table_id,
+                'table': table.get_table_state(player_id),
+                'reconnected': False
+            })
+            
+            # 向房间内其他玩家广播新玩家加入
+            emit('player_joined', {
+                'player': {
+                    'id': player.id,
+                    'nickname': player.nickname,
+                    'chips': player.chips,
+                    'position': table.get_player_position(player_id)
+                }
+            }, room=table_id, include_self=False)
+            
+            print(f"玩家 {player.nickname} 加入房间 {table.title}")
         else:
             emit('error', {'message': '无法加入房间'})
             
@@ -1307,8 +1376,18 @@ def handle_add_bot(data):
         
         # 添加到房间
         if table.add_player(bot):
-            # 同时添加到数据库
-            db.join_table(table_id, bot_id)
+            # 同时添加到数据库，正确设置机器人标识
+            if db.join_table(table_id, bot_id):
+                # 手动更新机器人的is_bot和bot_level字段
+                with db.get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        UPDATE table_players 
+                        SET is_bot = 1, bot_level = ?
+                        WHERE table_id = ? AND player_id = ?
+                    ''', (level_enum.value, table_id, bot_id))
+                    conn.commit()
+                    print(f"✅ 手动添加机器人 {bot_name} 数据库标识已更新: is_bot=1, bot_level={level_enum.value}")
             
             # 发送机器人添加成功消息
             socketio.emit('bot_added', {
@@ -1618,26 +1697,96 @@ def check_and_cleanup_table(table_id):
         return False
 
 def cleanup_empty_tables():
-    """定期清理空房间和只有机器人的房间"""
+    """定期清理空房间、机器人房间和长时间无活动的房间"""
     try:
+        print("🧹 开始定期维护...")
+        
+        # 1. 使用数据库清理功能
         closed_count = db.close_empty_tables()
         
-        # 同时清理内存中的房间
+        # 2. 清理内存中的房间
         tables_to_remove = []
         for table_id, table in tables.items():
+            should_remove = False
+            
+            # 检查是否为空房间
+            if len(table.players) == 0:
+                should_remove = True
+                print(f"   发现空房间: {table.title}")
+            
+            # 检查是否只有机器人
             human_players = [p for p in table.players if not p.is_bot]
-            if len(table.players) == 0 or len(human_players) == 0:
+            if len(human_players) == 0 and len(table.players) > 0:
+                should_remove = True
+                print(f"   发现纯机器人房间: {table.title}")
+            
+            # 检查是否有破产玩家卡住的情况
+            broke_players = [p for p in table.players if p.chips <= 0]
+            if len(broke_players) > 0:
+                print(f"   发现破产玩家 {len(broke_players)} 个在房间 {table.title}")
+                # 移除破产玩家
+                for player in broke_players:
+                    if player in table.players:
+                        table.players.remove(player)
+                        print(f"     移除破产玩家: {player.nickname}")
+            
+            if should_remove:
                 tables_to_remove.append(table_id)
         
+        # 移除内存中的房间
         for table_id in tables_to_remove:
             if table_id in tables:
+                table_title = tables[table_id].title
                 del tables[table_id]
-                print(f"从内存中清理房间: {table_id}")
+                print(f"   从内存中清理房间: {table_title}")
+                
+                # 清理相关的会话数据
+                if table_id in next_round_votes:
+                    del next_round_votes[table_id]
+                if table_id in table_sessions:
+                    del table_sessions[table_id]
+                if table_id in current_hands:
+                    del current_hands[table_id]
         
-        if closed_count > 0:
-            print(f"定期清理：关闭了 {closed_count} 个房间")
+        # 3. 清理断开连接的玩家会话
+        disconnected_sessions = []
+        for session_id, session_info in player_sessions.items():
+            # 检查会话是否还有效（这里可以添加更多检查）
+            player_id = session_info.get('player_id')
+            if not player_id:
+                disconnected_sessions.append(session_id)
+        
+        for session_id in disconnected_sessions:
+            if session_id in player_sessions:
+                player_info = player_sessions[session_id]
+                del player_sessions[session_id]
+                print(f"   清理断开的会话: {player_info.get('nickname', 'Unknown')}")
+        
+        # 4. 优化数据库（每10次清理执行一次）
+        import random
+        if random.randint(1, 10) == 1:
+            try:
+                with db.get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('PRAGMA optimize')
+                    conn.commit()
+                print("   📊 数据库优化完成")
+            except Exception as e:
+                print(f"   ❌ 数据库优化失败: {e}")
+        
+        total_cleaned = closed_count + len(tables_to_remove) + len(disconnected_sessions)
+        if total_cleaned > 0:
+            print(f"✅ 定期维护完成: 清理了 {total_cleaned} 项 (房间: {closed_count + len(tables_to_remove)}, 会话: {len(disconnected_sessions)})")
+        else:
+            print("✅ 定期维护完成: 无需清理")
+            
+        # 5. 显示当前状态
+        print(f"📊 当前状态: {len(tables)} 个活跃房间, {len(player_sessions)} 个玩家会话")
+        
     except Exception as e:
-        print(f"清理房间时出错: {e}")
+        print(f"❌ 清理房间时出错: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 @socketio.on('vote_next_round')
@@ -1807,6 +1956,7 @@ def handle_hand_end(table_id, winner, showdown_info):
             if hasattr(winner, 'nickname'):
                 # winner 是玩家对象
                 winner_player = winner
+                print(f"🎯 获胜者是Player对象: {winner_player.nickname}")
             elif isinstance(winner, dict):
                 # winner 是字典，需要转换为玩家对象
                 winner_id = winner.get('id')
@@ -1819,6 +1969,9 @@ def handle_hand_end(table_id, winner, showdown_info):
                         if player.nickname == winner_nickname:
                             winner_player = player
                             break
+                print(f"🎯 获胜者是字典，转换为Player对象: {winner_player.nickname if winner_player else '未找到'}")
+        else:
+            print("🎯 没有获胜者信息")
         
         # 如果还没有找到获胜者，强制创建一个
         if not winner_player:
@@ -1850,7 +2003,13 @@ def handle_hand_end(table_id, winner, showdown_info):
         showdown_players = []
         
         if winner_player:
-            winner_list = [{'nickname': winner_player.nickname, 'chips': winner_player.chips}]
+            # 计算获胜奖金 - 使用底池数量
+            winning_amount = showdown_info.get('pot', table.pot)
+            winner_list = [{
+                'nickname': winner_player.nickname, 
+                'chips': winner_player.chips,
+                'amount': winning_amount  # 添加奖金信息
+            }]
             if showdown_info.get('win_reason') == 'others_folded':
                 winner_message = f"手牌结束，{winner_player.nickname} 获胜（其他玩家弃牌）"
             else:
@@ -1858,8 +2017,10 @@ def handle_hand_end(table_id, winner, showdown_info):
         
         # 如果有摊牌信息，添加详细信息
         if showdown_info.get('is_showdown') and showdown_info.get('showdown_players'):
+            print(f"🃏 处理摊牌信息，参与玩家数: {len(showdown_info['showdown_players'])}")
             showdown_players = []
-            for player_info in showdown_info['showdown_players']:
+            for i, player_info in enumerate(showdown_info['showdown_players']):
+                print(f"  摊牌玩家{i+1}: {player_info['nickname']} - {player_info['hand_description']}")
                 showdown_players.append({
                     'nickname': player_info['nickname'],
                     'is_bot': player_info['is_bot'],
@@ -1870,6 +2031,8 @@ def handle_hand_end(table_id, winner, showdown_info):
                     'result': player_info['result'],
                     'winnings': player_info['winnings']
                 })
+        else:
+            print(f"🃏 没有摊牌信息或不是摊牌: is_showdown={showdown_info.get('is_showdown')}, players={len(showdown_info.get('showdown_players', []))}")
         
         # 广播手牌结束信息和更新后的游戏状态
         updated_game_state = table.get_table_state()
@@ -1917,6 +2080,129 @@ def handle_hand_end(table_id, winner, showdown_info):
         print(f"处理手牌结束错误: {e}")
 
 
+@app.route('/api/table_players')
+def api_table_players():
+    """返回指定房间所有玩家及其座位信息，供前端选座"""
+    table_id = request.args.get('table_id')
+    if not table_id:
+        return jsonify({'success': False, 'message': '缺少table_id'}), 400
+    try:
+        players = db.get_table_players(table_id)
+        db_table = db.get_table(table_id)
+        max_players = db_table['max_players'] if db_table else 6
+        return jsonify({'success': True, 'players': players, 'max_players': max_players})
+    except Exception as e:
+        print(f"/api/table_players error: {e}")
+        return jsonify({'success': False, 'message': '服务器错误'}), 500
+
+
+@app.route('/api/game_history')
+def api_game_history():
+    """获取游戏历史记录"""
+    table_id = request.args.get('table_id')
+    limit = request.args.get('limit', 10, type=int)
+    
+    if not table_id:
+        return jsonify({'success': False, 'message': '缺少table_id参数'}), 400
+    
+    try:
+        from game_logger import game_logger
+        
+        with game_logger.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # 获取游戏会话信息
+            cursor.execute('''
+                SELECT * FROM game_sessions 
+                WHERE table_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+            ''', (table_id,))
+            session = cursor.fetchone()
+            
+            # 获取手牌记录
+            cursor.execute('''
+                SELECT id, hand_number, started_at, ended_at, status, stage,
+                       pot, winner_id, winner_nickname, winning_amount, community_cards
+                FROM hands 
+                WHERE table_id = ?
+                ORDER BY hand_number DESC
+                LIMIT ?
+            ''', (table_id, limit))
+            hands = cursor.fetchall()
+            
+            # 获取玩家动作记录
+            cursor.execute('''
+                SELECT pa.hand_id, pa.player_nickname, pa.action_type, 
+                       pa.amount, pa.stage, pa.timestamp
+                FROM player_actions pa
+                JOIN hands h ON pa.hand_id = h.id
+                WHERE h.table_id = ?
+                ORDER BY pa.timestamp DESC
+                LIMIT ?
+            ''', (table_id, limit * 5))  # 获取更多动作记录
+            actions = cursor.fetchall()
+            
+            # 格式化数据
+            session_data = None
+            if session:
+                session_data = {
+                    'id': session[0],
+                    'table_id': session[1],
+                    'table_title': session[2],
+                    'created_at': session[3],
+                    'ended_at': session[4],
+                    'status': session[5],
+                    'player_count': session[6],
+                    'bot_count': session[7],
+                    'total_hands': session[8]
+                }
+            
+            hands_data = []
+            for hand in hands:
+                community_cards = json.loads(hand[10]) if hand[10] else []
+                hands_data.append({
+                    'id': hand[0],
+                    'hand_number': hand[1],
+                    'started_at': hand[2],
+                    'ended_at': hand[3],
+                    'status': hand[4],
+                    'stage': hand[5],
+                    'pot': hand[6],
+                    'winner_id': hand[7],
+                    'winner_nickname': hand[8],
+                    'winning_amount': hand[9],
+                    'community_cards': community_cards
+                })
+            
+            actions_data = []
+            for action in actions:
+                actions_data.append({
+                    'hand_id': action[0],
+                    'player_nickname': action[1],
+                    'action_type': action[2],
+                    'amount': action[3],
+                    'stage': action[4],
+                    'timestamp': action[5]
+                })
+            
+            return jsonify({
+                'success': True,
+                'session': session_data,
+                'games': hands_data,  # 使用 'games' 键名与测试兼容
+                'actions': actions_data,
+                'total_records': len(hands_data)
+            })
+            
+    except Exception as e:
+        print(f"获取游戏历史失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': f'获取游戏历史失败: {str(e)}'
+        }), 500
+
 
 if __name__ == '__main__':
     import os
@@ -1925,22 +2211,60 @@ if __name__ == '__main__':
         print("🃏 德州扑克游戏服务器启动中...")
         print("📊 数据库初始化完成")
         
+        # 启动时进行数据库修复和清理
+        print("🔧 执行启动修复...")
+        try:
+            import subprocess
+            result = subprocess.run(['python', 'fix_database_issues.py'], 
+                                  capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                print("✅ 数据库修复完成")
+            else:
+                print(f"⚠️ 数据库修复警告: {result.stderr}")
+        except Exception as e:
+            print(f"⚠️ 数据库修复失败: {e}")
+        
         # 启动时清理空房间
-        print("🧹 清理空房间...")
+        print("🧹 初始清理...")
         cleanup_empty_tables()
         
-        # 启动定期清理任务
+        # 启动定期维护任务
         import threading
-        def periodic_cleanup():
+        def periodic_maintenance():
             import time
             while True:
-                time.sleep(300)  # 每5分钟清理一次
-                cleanup_empty_tables()
+                time.sleep(180)  # 每3分钟维护一次（更频繁）
+                try:
+                    cleanup_empty_tables()
+                except Exception as e:
+                    print(f"❌ 定期维护出错: {e}")
         
-        cleanup_thread = threading.Thread(target=periodic_cleanup, daemon=True)
+        # 启动长期清理任务  
+        def long_term_cleanup():
+            import time
+            while True:
+                time.sleep(3600)  # 每小时执行一次深度清理
+                try:
+                    print("🔧 执行每小时深度维护...")
+                    import subprocess
+                    result = subprocess.run(['python', 'fix_database_issues.py'], 
+                                          capture_output=True, text=True, timeout=60)
+                    if result.returncode == 0:
+                        print("✅ 深度维护完成")
+                    else:
+                        print(f"⚠️ 深度维护警告")
+                except Exception as e:
+                    print(f"❌ 深度维护失败: {e}")
+        
+        # 启动维护线程
+        maintenance_thread = threading.Thread(target=periodic_maintenance, daemon=True)
+        maintenance_thread.start()
+        
+        cleanup_thread = threading.Thread(target=long_term_cleanup, daemon=True)
         cleanup_thread.start()
         
         print("🌐 服务器地址: http://192.168.178.39:5000")
         print("🎮 游戏已准备就绪！")
+        print("⚙️ 自动维护已启动 (每3分钟快速维护，每小时深度维护)")
     
     socketio.run(app, host='0.0.0.0', port=5000, debug=True) 

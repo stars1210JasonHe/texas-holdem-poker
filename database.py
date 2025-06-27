@@ -296,9 +296,25 @@ class PokerDatabase:
                 # 解析JSON字段
                 player_dict['hole_cards'] = json.loads(player_dict['hole_cards'])
                 
-                # 判断是否是机器人（机器人名称包含特定关键词）
+                # 判断是否是机器人
                 nickname = player_dict['nickname'] or f"Bot_{player_dict['player_id'][:8]}"
-                is_bot = any(keyword in nickname for keyword in ['新手', '菜鸟', '学徒', '小白', '萌新', '老司机', '高手', '大神', '专家', '老手', '大师', '传奇', '王者', '至尊', '无敌', 'Bot_'])
+                
+                # 机器人关键词（更全面的检测）
+                bot_keywords = [
+                    '新手', '菜鸟', '学徒', '小白', '萌新',
+                    '老司机', '高手', '大神', '专家', '老手', 
+                    '大师', '传奇', '王者', '至尊', '无敌',
+                    'Bot_', 'bot_', 'BOT_',
+                    '初级机器人', '中级机器人', '高级机器人', '神级机器人',
+                    '机器人', '电脑', 'AI', 'CPU'
+                ]
+                
+                # 如果数据库中已经标记为机器人，优先使用数据库标记
+                if player_dict['is_bot']:
+                    is_bot = True
+                else:
+                    # 否则根据昵称判断
+                    is_bot = any(keyword in nickname for keyword in bot_keywords)
                 
                 player_dict['nickname'] = nickname
                 player_dict['is_bot'] = is_bot
@@ -332,10 +348,49 @@ class PokerDatabase:
                     ''', (table_id,))
                     print(f"房间 {table_id} 已关闭（无玩家）")
                 else:
-                    # 更新房间活动时间
+                    # 检查剩余的玩家是否都是机器人
                     cursor.execute('''
-                        UPDATE tables SET last_activity = ? WHERE id = ?
-                    ''', (time.time(), table_id))
+                        SELECT tp.*, u.nickname
+                        FROM table_players tp
+                        LEFT JOIN users u ON tp.player_id = u.id
+                        WHERE tp.table_id = ?
+                    ''', (table_id,))
+                    
+                    remaining_player_records = cursor.fetchall()
+                    human_players = 0
+                    
+                    for player_record in remaining_player_records:
+                        nickname = player_record['nickname'] or f"Bot_{player_record['player_id'][:8]}"
+                        
+                        # 机器人关键词检测
+                        bot_keywords = [
+                            '新手', '菜鸟', '学徒', '小白', '萌新',
+                            '老司机', '高手', '大神', '专家', '老手', 
+                            '大师', '传奇', '王者', '至尊', '无敌',
+                            'Bot_', 'bot_', 'BOT_',
+                            '初级机器人', '中级机器人', '高级机器人', '神级机器人',
+                            '机器人', '电脑', 'AI', 'CPU'
+                        ]
+                        
+                        is_bot = player_record['is_bot'] or any(keyword in nickname for keyword in bot_keywords)
+                        
+                        if not is_bot:
+                            human_players += 1
+                    
+                    # 如果只剩机器人，关闭房间
+                    if human_players == 0:
+                        cursor.execute('''
+                            UPDATE tables SET is_active = 0 WHERE id = ?
+                        ''', (table_id,))
+                        cursor.execute('''
+                            DELETE FROM table_players WHERE table_id = ?
+                        ''', (table_id,))
+                        print(f"房间 {table_id} 已关闭（只剩机器人）")
+                    else:
+                        # 更新房间活动时间
+                        cursor.execute('''
+                            UPDATE tables SET last_activity = ? WHERE id = ?
+                        ''', (time.time(), table_id))
                 
                 conn.commit()
                 print(f"玩家 {player_id} 离开房间 {table_id}，剩余玩家: {remaining_players}")

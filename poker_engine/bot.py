@@ -60,16 +60,59 @@ class Bot(Player):
         # 更新统计数据
         self.session_stats['hands_played'] += 1
         
-        if self.bot_level == BotLevel.BEGINNER:
-            return self._beginner_strategy(game_state)
-        elif self.bot_level == BotLevel.INTERMEDIATE:
-            return self._intermediate_strategy(game_state)
-        elif self.bot_level == BotLevel.ADVANCED:
-            return self._advanced_strategy(game_state)
-        elif self.bot_level == BotLevel.GOD:
-            return self._god_strategy(game_state)
-        else:
-            return self._advanced_strategy(game_state)
+        # 检查基本状态
+        if self.chips <= 0:
+            return PlayerAction.FOLD, 0
+        
+        if self.status not in [PlayerStatus.PLAYING, PlayerStatus.ALL_IN]:
+            return PlayerAction.FOLD, 0
+        
+        try:
+            if self.bot_level == BotLevel.BEGINNER:
+                result = self._beginner_strategy(game_state)
+            elif self.bot_level == BotLevel.INTERMEDIATE:
+                result = self._intermediate_strategy(game_state)
+            elif self.bot_level == BotLevel.ADVANCED:
+                result = self._advanced_strategy(game_state)
+            elif self.bot_level == BotLevel.GOD:
+                result = self._god_strategy(game_state)
+            else:
+                result = self._advanced_strategy(game_state)
+            
+            # 验证返回结果
+            if result and len(result) == 2:
+                action_type, amount = result
+                # 确保动作类型有效
+                if isinstance(action_type, PlayerAction) and isinstance(amount, (int, float)):
+                    return action_type, int(amount)
+            
+            # 如果策略返回无效结果，使用兜底策略
+            print(f"🤖 {self.nickname} 策略返回无效结果: {result}，使用兜底策略")
+            return self._fallback_strategy(game_state)
+            
+        except Exception as e:
+            print(f"🤖 {self.nickname} 决策异常: {e}，使用兜底策略")
+            return self._fallback_strategy(game_state)
+    
+    def _fallback_strategy(self, game_state: Dict) -> Tuple[PlayerAction, int]:
+        """兜底策略：确保总是返回有效动作"""
+        current_bet = game_state.get('current_bet', 0)
+        call_amount = current_bet - self.current_bet
+        
+        # 如果无需跟注，就过牌
+        if call_amount <= 0:
+            return PlayerAction.CHECK, 0
+        
+        # 如果跟注金额超过筹码，就弃牌
+        if call_amount >= self.chips:
+            return PlayerAction.FOLD, 0
+        
+        # 如果是小额跟注（小于筹码的10%），就跟注
+        if call_amount <= self.chips * 0.1:
+            return PlayerAction.CALL, call_amount
+        
+        # 否则弃牌
+        return PlayerAction.FOLD, 0
     
     def _beginner_strategy(self, game_state: Dict) -> Tuple[PlayerAction, int]:
         """
@@ -107,17 +150,31 @@ class Bot(Player):
             else:
                 return PlayerAction.FOLD, 0
         
-        # 根据手牌强度决定
-        if hand_strength < 0.4:
+        # 根据手牌强度决定 - 调整为更合理的阈值
+        
+        # 计算底池赔率
+        pot_odds = call_amount / (pot_size + call_amount) if (pot_size + call_amount) > 0 else 1
+        
+        # 更宽松的弃牌阈值，避免过度弃牌
+        if hand_strength < 0.15:  # 只有最垃圾的牌才弃牌
             return PlayerAction.FOLD, 0
-        elif hand_strength < 0.7:
-            if random.random() < 0.6:  # 60% 跟注
+        elif hand_strength < 0.35:
+            # 边际牌：考虑底池赔率和随机性
+            if pot_odds > 0.3:  # 底池赔率好的时候弃牌
+                return PlayerAction.FOLD, 0
+            elif random.random() < 0.7:  # 70% 跟注
+                return PlayerAction.CALL, call_amount
+            else:
+                return PlayerAction.FOLD, 0
+        elif hand_strength < 0.6:
+            # 中等牌：基本跟注
+            if random.random() < 0.85:  # 85% 跟注
                 return PlayerAction.CALL, call_amount
             else:
                 return PlayerAction.FOLD, 0
         else:
-            # 强牌
-            if random.random() < 0.3:  # 30% 加注
+            # 强牌：跟注或加注
+            if random.random() < 0.4:  # 40% 加注
                 raise_amount = min(min_raise, self.chips)
                 if raise_amount > call_amount:
                     return PlayerAction.RAISE, raise_amount
@@ -297,18 +354,23 @@ class Bot(Player):
                 else:
                     return PlayerAction.CALL, call_amount
             elif adjusted_win_prob > 0.65:
-                # 强牌，中等加注
-                medium_raise = min(int(2 * big_blind), self.chips - call_amount)
-                if medium_raise > big_blind // 2:
-                    return PlayerAction.RAISE, call_amount + medium_raise
+                # 强牌，适度加注
+                value_raise = self._calculate_optimal_bet_size(pot_size + call_amount, 'value', position)
+                total_bet = call_amount + value_raise
+                if total_bet <= self.chips and random.random() < 0.7:
+                    return PlayerAction.RAISE, total_bet
                 else:
                     return PlayerAction.CALL, call_amount
             else:
                 return PlayerAction.CALL, call_amount
-        elif adjusted_win_prob > pot_odds * 0.9:
-            # 边际跟注
-            return PlayerAction.CALL, call_amount
+        elif adjusted_win_prob * position_factor > pot_odds:
+            # 边际价值，倾向跟注
+            if random.random() < 0.6:
+                return PlayerAction.CALL, call_amount
+            else:
+                return PlayerAction.FOLD, 0
         else:
+            # 胜率不足，弃牌
             return PlayerAction.FOLD, 0
     
     def _evaluate_preflop_hand(self) -> float:
@@ -343,21 +405,29 @@ class Bot(Player):
         
         base_strength = 0.0
         
-        # 高牌价值
+        # 高牌价值 - 提高基础强度
         if high_rank == 14:  # A
-            base_strength += 0.35
+            base_strength += 0.4
             if low_rank >= 10:  # AK, AQ, AJ, AT
-                base_strength += 0.25
+                base_strength += 0.3
             elif low_rank >= 7:  # A9-A7
-                base_strength += 0.15
-        elif high_rank >= 12:  # K, Q
-            base_strength += 0.25
-            if low_rank >= 9:
-                base_strength += 0.15
-        elif high_rank >= 10:  # J, T
-            base_strength += 0.15
-            if low_rank >= 8:
+                base_strength += 0.2
+            else:  # A6-A2
                 base_strength += 0.1
+        elif high_rank >= 12:  # K, Q
+            base_strength += 0.3
+            if low_rank >= 9:
+                base_strength += 0.2
+            elif low_rank >= 6:
+                base_strength += 0.1
+        elif high_rank >= 10:  # J, T
+            base_strength += 0.25
+            if low_rank >= 8:
+                base_strength += 0.15
+            elif low_rank >= 5:
+                base_strength += 0.05
+        else:  # 9及以下
+            base_strength += 0.1  # 给所有牌一个基础价值
         
         # 连牌奖励
         if gap == 1:  # 连牌
@@ -666,7 +736,7 @@ class Bot(Player):
         active_players = [p for p in all_players if p.status.value == 'playing' and p.id != self.id]
         
         print(f"🔮 德州扑克之神 {self.nickname} 开始分析...")
-        print(f"  - 我的手牌: {[f'{c.rank.value}{c.suit.value}' for c in self.hole_cards]}")
+        print(f"  - 我的手牌: {[f'{c.rank.symbol}{c.suit.value}' for c in self.hole_cards]}")
         
         # 🔮 上帝视角：分析所有玩家手牌
         if len(community_cards) >= 3:
@@ -676,7 +746,7 @@ class Bot(Player):
                 if hasattr(player, 'hole_cards') and player.hole_cards:
                     hand_rank, _ = HandEvaluator.evaluate_hand(player.hole_cards, community_cards)
                     all_hand_strengths[player.id] = hand_rank.rank_value
-                    print(f"  - {player.nickname}: {[f'{c.rank.value}{c.suit.value}' for c in player.hole_cards]} = {hand_rank.name}")
+                    print(f"  - {player.nickname}: {[f'{c.rank.symbol}{c.suit.value}' for c in player.hole_cards]} = {hand_rank.name}")
             
             # 计算我的手牌强度
             my_hand_rank, _ = HandEvaluator.evaluate_hand(self.hole_cards, community_cards)

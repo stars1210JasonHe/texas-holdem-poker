@@ -706,21 +706,61 @@
         return div.innerHTML;
     }
 
-    // 加入房间
+    // 加入房间（带选座弹窗）
     function joinTable(tableId) {
-        socket.emit('join_table', { table_id: tableId });
-        
-        // 监听加入结果
-        socket.once('table_joined', function(data) {
-            if (data.success) {
-                showNotification('成功加入房间！', 'success');
-                location.href = `/table/${tableId}`;
-            }
-        });
-        
-        socket.once('error', function(data) {
-            showNotification(data.message || '加入房间失败', 'error');
-        });
+        // 先获取当前房间玩家信息
+        fetch(`/api/table_players?table_id=${tableId}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    showNotification(data.message || '获取房间信息失败', 'error');
+                    return;
+                }
+                const players = data.players || [];
+                // 获取最大玩家数
+                const maxPlayers = data.max_players || 6;
+                // 构建座位占用信息
+                const occupied = new Array(maxPlayers).fill(false);
+                players.forEach(p => {
+                    if (typeof p.position === 'number') occupied[p.position] = true;
+                });
+                // 弹窗选座
+                let html = '<div style="padding:16px;">请选择座位：<br><br>';
+                for (let i = 0; i < maxPlayers; i++) {
+                    html += `<button class="seat-btn" data-pos="${i}" ${occupied[i] ? 'disabled style="opacity:0.5;"' : ''}>座位${i+1}</button> `;
+                }
+                html += '</div>';
+                const modal = document.createElement('div');
+                modal.innerHTML = html;
+                modal.style.position = 'fixed';
+                modal.style.left = '0';
+                modal.style.top = '0';
+                modal.style.width = '100vw';
+                modal.style.height = '100vh';
+                modal.style.background = 'rgba(0,0,0,0.5)';
+                modal.style.zIndex = 9999;
+                modal.onclick = e => { if (e.target === modal) document.body.removeChild(modal); };
+                modal.querySelectorAll('.seat-btn').forEach(btn => {
+                    btn.onclick = function(e) {
+                        e.stopPropagation();
+                        const pos = parseInt(this.getAttribute('data-pos'));
+                        document.body.removeChild(modal);
+                        // 发送带 position 的 join_table
+                        socket.emit('join_table', { table_id: tableId, position: pos });
+                        // 监听加入结果
+                        socket.once('table_joined', function(data) {
+                            if (data.success) {
+                                showNotification('成功加入房间！', 'success');
+                                location.href = `/table/${tableId}`;
+                            }
+                        });
+                        socket.once('error', function(data) {
+                            showNotification(data.message || '加入房间失败', 'error');
+                        });
+                    };
+                });
+                document.body.appendChild(modal);
+            });
     }
 
     // 初始化页面时设置Socket.IO事件监听器

@@ -200,6 +200,81 @@
                 displayPlayers(testPlayers);
             }, 2000);
         }
+
+        // 检查是否 test 账号，显示胜率计算器按钮
+        if (currentPlayer && currentPlayer.nickname === 'test') {
+            const btn = document.createElement('button');
+            btn.id = 'winProbBtn';
+            btn.textContent = '胜率计算器';
+            btn.className = 'bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg ml-2';
+            btn.onclick = function() {
+                btn.disabled = true;
+                btn.textContent = '计算中...';
+                fetch('/api/win_probability', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ table_id: tableId, player_id: myPlayerId })
+                })
+                .then(r => r.json())
+                .then(res => {
+                    btn.disabled = false;
+                    btn.textContent = '胜率计算器';
+                    if (res.success && res.data) {
+                        alert(`胜率: ${(res.data.win * 100).toFixed(1)}%\n平局: ${(res.data.tie * 100).toFixed(1)}%\n失败: ${(res.data.lose * 100).toFixed(1)}%`);
+                    } else {
+                        alert(res.message || '无法计算胜率');
+                    }
+                })
+                .catch(() => {
+                    btn.disabled = false;
+                    btn.textContent = '胜率计算器';
+                    alert('网络错误');
+                });
+            };
+            // 假设有操作区div id为tableActions，否则插入body
+            const actions = document.getElementById('tableActions') || document.body;
+            actions.appendChild(btn);
+        }
+
+        // 检查是否 test 账号，显示记牌助手按钮
+        if (currentPlayer && currentPlayer.nickname === 'test') {
+            const btnHelper = document.createElement('button');
+            btnHelper.id = 'cardHelperBtn';
+            btnHelper.textContent = '记牌助手';
+            btnHelper.className = 'bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg ml-2';
+            btnHelper.onclick = function() {
+                btnHelper.disabled = true;
+                btnHelper.textContent = '加载中...';
+                fetch('/api/card_tracking', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ table_id: tableId, player_id: myPlayerId })
+                })
+                .then(r => r.json())
+                .then(res => {
+                    btnHelper.disabled = false;
+                    btnHelper.textContent = '记牌助手';
+                    if (res.success && res.data) {
+                        const known = res.data.known_cards.map(c => `${c.rank}${c.suit}`).join(' ');
+                        const remain = res.data.remaining_cards;
+                        let remainStr = '';
+                        if (remain) {
+                            remainStr = `\n剩余牌数: ${remain.total_remaining}\n花色: ${Object.entries(remain.suits).map(([s, n]) => `${s}:${n}`).join(' ')}\n点数: ${Object.entries(remain.ranks).map(([r, n]) => `${r}:${n}`).join(' ')}`;
+                        }
+                        alert(`已知牌: ${known || '无'}${remainStr}`);
+                    } else {
+                        alert(res.message || '无法获取记牌信息');
+                    }
+                })
+                .catch(() => {
+                    btnHelper.disabled = false;
+                    btnHelper.textContent = '记牌助手';
+                    alert('网络错误');
+                });
+            };
+            const actions = document.getElementById('tableActions') || document.body;
+            actions.appendChild(btnHelper);
+        }
     });
 
     function initEventListeners() {
@@ -439,21 +514,12 @@
     function confirmBet() {
         const amount = parseInt(document.getElementById('betAmount').value);
         if (amount && amount > 0) {
-            // 判断是下注还是加注
+            // 简化逻辑：根据当前投注情况决定是下注还是加注
             if (currentTableState && currentTableState.current_bet > 0) {
-                // 在ante模式下，如果所有玩家投注相等，允许下注
-                const myPlayer = currentTableState.players.find(p => p.id === myPlayerId);
-                const isAnteMode = currentTableState.game_mode === 'ante';
-                const myBetEqualsCurrentBet = myPlayer && myPlayer.current_bet === currentTableState.current_bet;
-                
-                if (isAnteMode && myBetEqualsCurrentBet) {
-                    // ante模式下，玩家在ante基础上下注
-                    playerAction('bet', amount);
-                } else {
-                    // 常规模式或需要加注的情况
-                    playerAction('raise', amount);
-                }
+                // 如果已有下注，则进行加注
+                playerAction('raise', amount);
             } else {
+                // 如果没有下注，则进行下注
                 playerAction('bet', amount);
             }
             hideBetInput();
@@ -485,13 +551,7 @@
             checkBtn.classList.remove('hidden');
             callBtn.classList.add('hidden');
             betBtn.classList.remove('hidden');
-            
-            // 在ante模式下，即使可以过牌，也要显示加注按钮
-            if (currentTableState && currentTableState.game_mode === 'ante') {
-                raiseBtn.classList.remove('hidden');
-            } else {
-                raiseBtn.classList.add('hidden');
-            }
+            raiseBtn.classList.add('hidden');
         } else {
             // 需要跟注时，显示跟注和加注
             checkBtn.classList.add('hidden');
@@ -540,6 +600,11 @@
         console.log('游戏开始事件:', data);
         currentTableState = data.table;
         
+        // 🎵 音乐集成：手牌开始时切换到游戏桌音乐
+        if (window.musicPlayer) {
+            musicPlayer.switchToTrack('table');
+        }
+        
         // 清空我的手牌显示
         document.getElementById('myCards').innerHTML = '';
         
@@ -570,6 +635,11 @@
     function handleYourTurn(data) {
         console.log('轮到你了:', data);
         
+        // 🎵 音乐集成：轮到我行动时播放紧张音乐
+        if (window.musicPlayer) {
+            musicPlayer.switchToTrack('action');
+        }
+        
         // 检查玩家是否有筹码
         const myPlayer = currentTableState ? currentTableState.players.find(p => p.id === myPlayerId) : null;
         if (!myPlayer || myPlayer.chips <= 0 || myPlayer.status === 'broke') {
@@ -589,6 +659,21 @@
 
     function handleActionProcessed(data) {
         currentTableState = data.table;
+        
+        // 🎵 音乐集成：根据动作类型播放音效
+        if (window.musicPlayer && data.action) {
+            // 如果是我的动作完成，切换回平静音乐
+            if (data.player_id === myPlayerId) {
+                musicPlayer.switchToTrack('table');
+            }
+            // 如果有大额下注或全下，播放紧张音乐
+            else if ((data.action === 'bet' || data.action === 'raise') && data.amount >= 100) {
+                musicPlayer.switchToTrack('action');
+            }
+            else if (data.action === 'allin') {
+                musicPlayer.switchToTrack('action');
+            }
+        }
         
         // 记录操作
         if (data.action && data.player_id) {
@@ -690,6 +775,11 @@
     function handleHandEnded(data) {
         console.log('🏆 手牌结束:', data);
         
+        // 🎵 音乐集成：手牌结束时切换回平静的游戏桌音乐
+        if (window.musicPlayer) {
+            musicPlayer.switchToTrack('table');
+        }
+        
         // 调试：检查摊牌数据
         console.log('🃏 摊牌数据检查:');
         console.log('  - showdown_info存在:', !!data.showdown_info);
@@ -739,10 +829,15 @@
             console.log('✅ 显示基础摊牌信息');
             showShowdownDetails(data.showdown_info);
         } else if (data.winners && data.winners.length > 0) {
-            console.log('✅ 显示简化获胜者信息');
+            console.log('✅ 显示获胜者信息（包括弃牌获胜）');
             showSimpleWinnerInfo(data.winners);
         } else {
-            console.log('❌ 没有可显示的摊牌信息');
+            console.log('❌ 没有可显示的获胜信息');
+            // 即使没有具体获胜者数据，也应该显示基本的手牌结束提示
+            if (data.message) {
+                console.log('📢 显示手牌结束消息');
+                showNotification(data.message, 'success', 5000);
+            }
         }
         
         // 显示消息
@@ -881,7 +976,7 @@
                         🏆 获胜者: ${winner.nickname}
                     </div>
                     <div class="text-green-300 mb-2">
-                        获得奖金: $${winner.amount || '未知'}
+                        获得奖金: $${winner.amount || 0}
                     </div>
                     ${winner.hole_cards && winner.hole_cards.length > 0 ? `
                         <div class="text-sm text-green-400 mb-2">获胜手牌:</div>
@@ -909,8 +1004,14 @@
         
         modal.innerHTML = `
             <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 border-2 border-green-500">
-                <h3 class="text-xl font-bold text-white mb-4 text-center">🎉 游戏结束</h3>
+                <h3 class="text-xl font-bold text-white mb-4 text-center">🎉 手牌结束</h3>
                 ${winnersHtml}
+                <div class="text-center text-gray-400 text-sm mb-4">
+                    ${winners.some(w => !w.hole_cards || w.hole_cards.length === 0) ? 
+                        '🃏 其他玩家弃牌，无需摊牌' : 
+                        '🃏 摊牌结果'
+                    }
+                </div>
                 <button onclick="this.closest('.fixed').remove()" 
                         class="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded mt-4">
                     确定
@@ -1741,7 +1842,46 @@
         // 同时调用检查轮次
         checkIfMyTurn();
     }
-    
+
+    // 🎵 音乐集成：离开页面时的音乐处理
+    window.addEventListener('beforeunload', function() {
+        if (window.musicPlayer) {
+            // 如果要离开游戏桌，切换回大厅音乐
+            musicPlayer.switchToTrack('lobby');
+        }
+    });
+
+    // 🎵 音乐集成：监听离开牌桌按钮
+    document.getElementById('leaveTableBtn').addEventListener('click', function() {
+        if (window.musicPlayer) {
+            musicPlayer.switchToTrack('lobby');
+        }
+    });
+
+    // 🎵 音乐快捷键支持
+    document.addEventListener('keydown', function(e) {
+        // 按 M 键切换音乐播放/暂停
+        if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+            // 确保不在输入框中
+            if (!['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+                e.preventDefault();
+                if (window.musicPlayer) {
+                    musicPlayer.toggle();
+                    showNotification(
+                        musicPlayer.isPlaying ? '🎵 音乐已开启' : '🔇 音乐已暂停', 
+                        'info', 1000
+                    );
+                }
+            }
+        }
+        // 按 Ctrl+M 打开音乐设置
+        else if (e.key.toLowerCase() === 'm' && e.ctrlKey) {
+            e.preventDefault();
+            if (window.musicPlayer) {
+                musicPlayer.showSettings();
+            }
+        }
+    });
 
 </script>
 {% endblock %} 

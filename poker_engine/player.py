@@ -132,10 +132,10 @@ class Player:
         self.total_bet += actual_amount
         self.has_acted = True
         
-        # 如果筹码用完，标记为没有筹码（观察者）
+        # 如果筹码用完，标记为全下状态（仍可参与胜负判定）
         if self.chips == 0:
-            self.status = PlayerStatus.BROKE
-            print(f"💸 玩家 {self.nickname} 筹码用完，成为观察者")
+            self.status = PlayerStatus.ALL_IN
+            print(f"💸 玩家 {self.nickname} 全下，等待摊牌")
             
         return actual_amount
     
