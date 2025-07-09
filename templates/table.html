@@ -821,11 +821,11 @@
         console.log('  - showdown_players数量:', data.showdown_info?.showdown_players?.length || 0);
         console.log('  - winners数量:', data.winners?.length || 0);
         
-        // 优化后的显示条件：只要有摊牌信息或获胜者信息就显示
+        // 优化后的显示条件：优先显示摊牌详情，包括单人获胜的情况
         if (data.showdown_info && data.showdown_info.showdown_players && data.showdown_info.showdown_players.length > 0) {
-            console.log('✅ 显示完整摊牌详情');
+            console.log('✅ 显示完整摊牌详情（包括单人获胜）');
             showShowdownDetails(data.showdown_info);
-        } else if (data.showdown_info && data.showdown_info.is_showdown) {
+        } else if (data.showdown_info && data.showdown_info.community_cards && data.showdown_info.community_cards.length > 0) {
             console.log('✅ 显示基础摊牌信息');
             showShowdownDetails(data.showdown_info);
         } else if (data.winners && data.winners.length > 0) {
@@ -855,19 +855,25 @@
     function showShowdownDetails(showdownInfo) {
         console.log('🃏 显示摊牌详情:', showdownInfo);
         
+        // 判断是否为弃牌获胜
+        const isFoldWin = showdownInfo.win_reason === 'others_folded';
+        const title = isFoldWin ? '🏆 获胜结果（其他玩家弃牌）' : '🃏 摊牌结果';
+        
         // 创建摊牌详情弹窗
         const modal = document.createElement('div');
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
         modal.innerHTML = `
             <div class="bg-gray-800 rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-bold text-white">🃏 摊牌结果</h3>
+                    <h3 class="text-xl font-bold text-white">${title}</h3>
                     <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-white">
                         <span class="text-2xl">&times;</span>
                     </button>
                 </div>
+                ${isFoldWin ? '<div class="mb-4 p-3 bg-green-800 rounded-lg"><p class="text-green-200 text-center">🎉 您通过加注让所有对手弃牌获胜！</p></div>' : ''}
                 
                 <!-- 公共牌显示 -->
+                ${showdownInfo.community_cards && showdownInfo.community_cards.length > 0 ? `
                 <div class="mb-6">
                     <h4 class="text-lg font-semibold text-gray-300 mb-2">🎴 公共牌</h4>
                     <div class="flex gap-2">
@@ -882,9 +888,10 @@
                             </div>`;
                         }).join('')}
                     </div>
-                </div>
+                </div>` : ''}
                 
                 <!-- 玩家摊牌详情 -->
+                ${showdownInfo.showdown_players && showdownInfo.showdown_players.length > 0 ? `
                 <div class="space-y-4">
                     <h4 class="text-lg font-semibold text-gray-300">🏆 玩家排名</h4>
                     ${showdownInfo.showdown_players.map((player, index) => {
@@ -930,7 +937,7 @@
                             </div>
                         `;
                     }).join('')}
-                </div>
+                </div>` : ''}
                 
                 <div class="mt-6 text-center">
                     <button onclick="this.closest('.fixed').remove()" 

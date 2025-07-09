@@ -98,6 +98,7 @@ class Bot(Player):
         """兜底策略：确保总是返回有效动作"""
         current_bet = game_state.get('current_bet', 0)
         call_amount = current_bet - self.current_bet
+        pot_size = game_state.get('pot_size', 0)
         
         # 如果无需跟注，就过牌
         if call_amount <= 0:
@@ -107,8 +108,11 @@ class Bot(Player):
         if call_amount >= self.chips:
             return PlayerAction.FOLD, 0
         
-        # 如果是小额跟注（小于筹码的10%），就跟注
-        if call_amount <= self.chips * 0.1:
+        # 计算底池赔率
+        pot_odds = call_amount / (pot_size + call_amount) if (pot_size + call_amount) > 0 else 1
+        
+        # 如果是合理的跟注（考虑底池赔率和筹码比例），就跟注
+        if call_amount <= self.chips * 0.25 or pot_odds < 0.33:  # 增加跟注阈值到25%，或底池赔率好
             return PlayerAction.CALL, call_amount
         
         # 否则弃牌

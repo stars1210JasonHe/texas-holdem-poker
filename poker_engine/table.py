@@ -924,7 +924,39 @@ class Table:
             showdown_info['is_showdown'] = False
             showdown_info['win_reason'] = 'others_folded'
             
-            print(f"玩家 {winner.nickname} 获胜（其他玩家弃牌），赢得底池 ${self.pot}")
+            # 即使其他人弃牌，也显示获胜者的手牌（如果有的话）
+            if len(winner.hole_cards) == 2:
+                card1_str = f"{winner.hole_cards[0].rank.symbol}{winner.hole_cards[0].suit.value}"
+                card2_str = f"{winner.hole_cards[1].rank.symbol}{winner.hole_cards[1].suit.value}"
+                
+                # 如果有足够的公共牌，评估手牌
+                hand_description = "未知牌型"
+                if len(self.community_cards) >= 3:
+                    from .hand_evaluator import HandEvaluator
+                    hand_rank, best_cards = HandEvaluator.evaluate_hand(winner.hole_cards, self.community_cards)
+                    hand_description = HandEvaluator.hand_to_string((hand_rank, best_cards))
+                
+                # 创建获胜者的摊牌信息
+                winner_info = {
+                    'player': winner,
+                    'player_id': winner.id,
+                    'nickname': winner.nickname,
+                    'is_bot': winner.is_bot,
+                    'hole_cards': [card.to_dict() for card in winner.hole_cards],
+                    'hole_cards_str': f"{card1_str} {card2_str}",
+                    'hand_description': hand_description,
+                    'rank': 1,
+                    'result': 'winner',
+                    'winnings': self.pot
+                }
+                
+                showdown_info['showdown_players'] = [winner_info]
+                
+                player_type = "🤖" if winner.is_bot else "👤"
+                print(f"{player_type} {winner.nickname} 获胜（其他玩家弃牌），手牌: {card1_str} {card2_str}，赢得底池 ${self.pot}")
+            else:
+                print(f"玩家 {winner.nickname} 获胜（其他玩家弃牌），赢得底池 ${self.pot}")
+            
             return showdown_info
         
         if len(active_players) > 1 and self.game_stage == GameStage.SHOWDOWN:

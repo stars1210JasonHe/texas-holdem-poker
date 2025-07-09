@@ -454,4 +454,171 @@
 @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+}
+
+/* 音乐显示按钮（当面板隐藏时显示） */
+.music-show-button {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 999;
+    transition: all 0.3s ease;
+}
+
+.show-music-btn {
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: white;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.show-music-btn:hover {
+    background: rgba(0, 0, 0, 0.9);
+    transform: scale(1.1);
+    box-shadow: 0 6px 25px rgba(0, 0, 0, 0.4);
+}
+
+.show-music-btn:active {
+    transform: scale(0.95);
+}
+
+/* 音乐通知消息（隐藏提示等） */
+.music-notification-message {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.9);
+    backdrop-filter: blur(15px);
+    border-radius: 12px;
+    padding: 16px 20px;
+    z-index: 1001;
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    animation: slideInRight 0.3s ease;
+    max-width: 300px;
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.music-notification-message .notification-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.music-notification-message .notification-content span {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.music-notification-message .notification-content p {
+    margin: 0;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.9);
+    line-height: 1.4;
+}
+
+/* 隐藏按钮样式 */
+.music-btn .hide-icon {
+    transition: transform 0.2s ease;
+}
+
+.music-btn:hover .hide-icon {
+    transform: scale(1.1);
+}
+
+/* 响应式设计 - 移动设备 */
+@media (max-width: 768px) {
+    .music-show-button {
+        top: 60px;
+        right: 15px;
+    }
+    
+    .show-music-btn {
+        width: 44px;
+        height: 44px;
+        font-size: 18px;
+    }
+    
+    .music-notification-message {
+        top: 15px;
+        right: 15px;
+        left: 15px;
+        max-width: none;
+    }
+    
+    .music-notification-message .notification-content p {
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 480px) {
+    .music-show-button {
+        top: 50px;
+        right: 10px;
+    }
+    
+    .show-music-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 16px;
+    }
+    
+    .music-notification-message {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        padding: 12px 16px;
+    }
+}
+
+/* 设置面板中的小提示文本样式 */
+.setting-item small {
+    color: rgba(255, 255, 255, 0.6) !important;
+    font-size: 11px;
+    font-style: italic;
+}
+
+/* 面板位置变化时的过渡动画 */
+.music-control-panel,
+.music-show-button {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 面板隐藏/显示动画 */
+.music-control-panel.hiding {
+    opacity: 0;
+    transform: scale(0.8);
+    pointer-events: none;
+}
+
+.music-show-button.showing {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.music-show-button.hiding {
+    opacity: 0;
+    transform: scale(0.8);
+    pointer-events: none;
 } 

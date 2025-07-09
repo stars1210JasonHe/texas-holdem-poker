@@ -5,6 +5,7 @@ class MusicPlayer {
         this.volume = 0.3; // 默认音量30%
         this.currentTrack = null;
         this.position = 'top-right'; // 默认位置
+        this.isVisible = true; // 控制面板是否可见
         this.tracks = {
             lobby: '/static/audio/lobby-music.mp3',
             table: '/static/audio/table-music.mp3',
@@ -19,12 +20,18 @@ class MusicPlayer {
         const savedVolume = localStorage.getItem('musicVolume');
         const savedMuted = localStorage.getItem('musicMuted') === 'true';
         const savedPosition = localStorage.getItem('musicPosition') || 'top-right';
+        const savedVisible = localStorage.getItem('musicVisible');
         
         if (savedVolume !== null) {
             this.volume = parseFloat(savedVolume);
         }
         
         this.position = savedPosition;
+        
+        // 如果用户之前设置了隐藏，则默认隐藏
+        if (savedVisible !== null) {
+            this.isVisible = savedVisible === 'true';
+        }
         
         // 创建音频元素
         this.audio = new Audio();
@@ -48,6 +55,11 @@ class MusicPlayer {
         controlPanel.id = 'music-control-panel';
         controlPanel.className = 'music-control-panel';
         
+        // 如果用户设置为隐藏，则初始状态为隐藏
+        if (!this.isVisible) {
+            controlPanel.style.display = 'none';
+        }
+        
         controlPanel.innerHTML = `
             <div class="music-control-content">
                 <button id="music-toggle" class="music-btn" title="播放/暂停音乐">
@@ -66,6 +78,9 @@ class MusicPlayer {
                 <button id="music-settings" class="music-btn" title="音乐设置">
                     <span class="settings-icon">⚙️</span>
                 </button>
+                <button id="music-hide" class="music-btn" title="隐藏音乐面板 (Ctrl+H)">
+                    <span class="hide-icon">👁️</span>
+                </button>
             </div>
         `;
         
@@ -74,8 +89,38 @@ class MusicPlayer {
         
         document.body.appendChild(controlPanel);
         
+        // 创建显示按钮（当面板隐藏时显示）
+        this.createShowButton();
+        
         // 绑定控制按钮事件
         this.bindControlEvents();
+    }
+    
+    createShowButton() {
+        // 创建一个小的显示按钮
+        const showButton = document.createElement('div');
+        showButton.id = 'music-show-button';
+        showButton.className = 'music-show-button';
+        showButton.innerHTML = `
+            <button class="show-music-btn" title="显示音乐控制面板 (Ctrl+H)">
+                🎵
+            </button>
+        `;
+        
+        // 如果面板可见，则隐藏显示按钮
+        if (this.isVisible) {
+            showButton.style.display = 'none';
+        }
+        
+        // 设置显示按钮位置
+        this.updateShowButtonPosition(showButton);
+        
+        document.body.appendChild(showButton);
+        
+        // 绑定显示按钮事件
+        showButton.addEventListener('click', () => {
+            this.showPanel();
+        });
     }
     
     bindControlEvents() {
@@ -97,6 +142,11 @@ class MusicPlayer {
         // 设置按钮
         document.getElementById('music-settings').addEventListener('click', () => {
             this.showSettings();
+        });
+        
+        // 隐藏按钮
+        document.getElementById('music-hide').addEventListener('click', () => {
+            this.hidePanel();
         });
     }
     
@@ -130,6 +180,22 @@ class MusicPlayer {
                 this.pause();
             } else if (this.wasPlayingBeforeHide) {
                 this.play();
+            }
+        });
+        
+        // 键盘快捷键
+        document.addEventListener('keydown', (e) => {
+            // Ctrl+H 切换面板显示/隐藏
+            if (e.ctrlKey && e.key === 'h') {
+                e.preventDefault();
+                this.togglePanel();
+            }
+            // M键 播放/暂停
+            else if (e.key === 'm' || e.key === 'M') {
+                if (!e.ctrlKey && !e.altKey && !e.shiftKey) {
+                    e.preventDefault();
+                    this.toggle();
+                }
             }
         });
     }
@@ -321,6 +387,15 @@ class MusicPlayer {
                         </label>
                     </div>
                     <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="panel-visible" ${this.isVisible ? 'checked' : ''}> 
+                            显示音乐控制面板
+                        </label>
+                        <small style="color: #666; display: block; margin-top: 5px;">
+                            快捷键: Ctrl+H 切换显示/隐藏
+                        </small>
+                    </div>
+                    <div class="setting-item">
                         <label>选择音乐:</label>
                         <select id="track-selector">
                             <option value="lobby" ${this.currentTrack === 'lobby' ? 'selected' : ''}>大厅音乐</option>
@@ -364,6 +439,14 @@ class MusicPlayer {
             this.setPosition(e.target.value);
         });
         
+        modal.querySelector('#panel-visible').addEventListener('change', (e) => {
+            if (e.target.checked) {
+                this.showPanel();
+            } else {
+                this.hidePanel();
+            }
+        });
+        
         // 点击背景关闭
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
@@ -397,8 +480,14 @@ class MusicPlayer {
         localStorage.setItem('musicPosition', position);
         
         const panel = document.getElementById('music-control-panel');
+        const showButton = document.getElementById('music-show-button');
+        
         if (panel) {
             this.updatePanelPosition(panel);
+        }
+        
+        if (showButton) {
+            this.updateShowButtonPosition(showButton);
         }
     }
     
@@ -435,6 +524,96 @@ class MusicPlayer {
                 // 默认右上角
                 panel.style.top = '80px';
                 panel.style.right = '20px';
+        }
+    }
+    
+    // 隐藏音乐控制面板
+    hidePanel() {
+        const panel = document.getElementById('music-control-panel');
+        const showButton = document.getElementById('music-show-button');
+        
+        if (panel && showButton) {
+            panel.style.display = 'none';
+            showButton.style.display = 'block';
+            this.isVisible = false;
+            localStorage.setItem('musicVisible', 'false');
+            
+            // 显示提示信息
+            this.showNotification('音乐控制面板已隐藏，按 Ctrl+H 可重新显示', 3000);
+        }
+    }
+    
+    // 显示音乐控制面板
+    showPanel() {
+        const panel = document.getElementById('music-control-panel');
+        const showButton = document.getElementById('music-show-button');
+        
+        if (panel && showButton) {
+            panel.style.display = 'block';
+            showButton.style.display = 'none';
+            this.isVisible = true;
+            localStorage.setItem('musicVisible', 'true');
+        }
+    }
+    
+    // 切换面板显示状态
+    togglePanel() {
+        if (this.isVisible) {
+            this.hidePanel();
+        } else {
+            this.showPanel();
+        }
+    }
+    
+    // 显示通知消息
+    showNotification(message, duration = 3000) {
+        const notification = document.createElement('div');
+        notification.className = 'music-notification-message';
+        notification.innerHTML = `
+            <div class="notification-content">
+                <span>🎵</span>
+                <p>${message}</p>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            if (notification.parentElement) {
+                notification.remove();
+            }
+        }, duration);
+    }
+    
+    // 更新显示按钮位置
+    updateShowButtonPosition(button) {
+        // 清除所有位置样式
+        button.style.top = '';
+        button.style.bottom = '';
+        button.style.left = '';
+        button.style.right = '';
+        
+        // 根据面板位置设置显示按钮位置
+        switch(this.position) {
+            case 'top-left':
+                button.style.top = '80px';
+                button.style.left = '20px';
+                break;
+            case 'top-right':
+                button.style.top = '80px';
+                button.style.right = '20px';
+                break;
+            case 'bottom-left':
+                button.style.bottom = '20px';
+                button.style.left = '20px';
+                break;
+            case 'bottom-right':
+                button.style.bottom = '20px';
+                button.style.right = '20px';
+                break;
+            default:
+                button.style.top = '80px';
+                button.style.right = '20px';
         }
     }
 }
